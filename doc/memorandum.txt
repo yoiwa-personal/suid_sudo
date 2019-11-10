@@ -1,0 +1,346 @@
+MEMORANDUM
+
+1. Security risks related to `nonsudo_ok` option
+
+As described in the API document, the module refuse to run the script
+when it is running as root, without explicitly doing so via `sudo`.
+This section described why it is designed in this way.
+
+The module obtains information on the real invoking users via SUDO_*
+environmental variables, which are set by `sudo`.  However, the values
+of these environments are only trustful when the script (more
+precisely, the Python/Ruby/Perl language interpreter) is directly
+invoked by `sudo`.
+
+To ensure the confidence, the script tries to detect whether it is
+actually invoked by sudo. To do that, it examines the path of the
+executable binary of the *parent process* via `proc` filesystem
+available in Linux, and compares with a fixed list of possible
+locations of `sudo` command.  If it does not match, the script assumes
+that the SUDO_* variables are not reliable.
+
+However, this detection is not perfect; if the parent was not 'sudo',
+it will detect so.  However, it might miss the fact that parent is
+`sudo` in certain cases, and considers "reliable" variables as
+"non-reliable" incorrectly.
+
+Here, we have several possible cases to examine.
+
+a) SUDO_* variable is considered not reliable (even non-existent), and
+   the script do not have a root privilege.
+
+The script assumes that it is not invoked by sudo.
+If `sudo_wrap` option is specified, it will re-executes itself
+with sudo to root.
+
+a-1) when it was actually invoked without sudo:
+
+   The assumption is correct.  Nothing the script can do, because
+   it cannot perform any setuid() operations.
+
+   There are some possibility that SUDO_* variables exist in this
+   case; when the script is invoked from another program running via
+   sudo.
+
+a-2) when it was actually invoked VIA sudo:
+
+   It might happen, for example when it is sudo'ed to non-root users.
+   Non-root process cannot read the parent's (sudo's) executable
+   location running as root.
+
+   Again, it does not have root privilege and nothing it can do.
+
+   Thin possibility of misconfiguration is that sudo should 
+   be configured to run the script as no one other than root.
+   (except when the invoking user is allowed to run any command as
+   root and others.)
+
+b) SUDO_* variable is reliable (parent is certainly a sudo)
+   but the script do not have a root privilege
+
+   It means that the script is sudo'ed to non-root users, but in that
+   case, parent sudo detection will fail under usual Linux security
+   setting; so, this case is not to be happen.
+
+   Any way, the script does not have root privilege and nothing it can do.
+
+c) SUDO_* variable is reliable (parent is certainly a sudo)
+   and the script has a root privilege
+
+   This is a usual case when invoked via sudo.
+
+d) SUDO_* variable is unreliable but the script has a root privilege.
+
+   The script assumes that it is not invoked by sudo.
+   This is the problematic case.
+
+d-1) when it was not actually invoked by sudo.
+
+   In that case, expected operation is to run as root.
+
+d-2) when it was actually invoked by sudo but detection was failed:
+
+   In this case, expected operation is to run as some privilege
+   other than root.
+
+So, allowing to run the command as root without explicit sudo
+(handling d-1 case) will possibly open up the security hole in d-2
+case.  This is why an execution under root privilege without calling
+via sudo is denied even when the reality were the d-1 case.  Users can
+easily avoid this by invoking it via sudo, falling to the (c) case.
+
+One possible cause for the d-2) case is that there are some other
+instances of 'sudo' outside of the whitelisted locations.  We're aware
+of some simple attack stories to this and implemented countermeasures:
+
+ - Hardlinks to the system-provided sudo in other locations are
+   detected by the module and rejected; furthermore, creating a
+   hardlink of setuid binary by non-owner is rejected by Linux 3.6+ by
+   default.
+
+ - If a symbolic link to the system-provided sudo is invoked, the link
+   in the proc filesystem points to the real sudo and thus falls into
+   case (c), at least under Linux 4.0+; if not, the same protection
+   mechanism for hardlinks will be triggered.
+
+ - Obviously, copying the system sudo binary by ordinary users will
+   not work (it loses the setuid power).  Also obviously, new
+   instances of sudo cannot be installed Without root privilege.
+
+However, there are still many possible misconfigurations or paths
+cheating this corner cases.  So, please do not enable 'nonsudo_ok'
+option.
+
+
+2. Behavior of ($UID, $EUID) in Perl
+
+Perl on not-too-old Linux has a very non-intuitive and critical
+"buggy" behavior on setting real and effective user IDs.
+
+As a background: in old Unix, there are only two kinds of user IDs
+(and group IDs), namely, the real user ID and the effective user ID.
+If either of these ID is 0, the process can gain root privilege by
+setting effective UID to 0.  In reverse, if both of these are
+non-zero, the process has lost ability to regain root privilege
+completely.  System calls corresponding to this model are seteuid and
+setreuid.  Perl's special variables are designed in this "two ID
+model".
+
+After Perl 5 is designed, recent POSIX.1 standard introduces "three-ID
+model", adding a "saved UID" feature.  In addition to above, if the
+"saved UID" is 0, the process can also regain the root privilege.  The
+system call "setresuid", which is non-standard but common, corresponds
+to this three-ID model.
+
+(In systems with three-ID model, the setreuid system call emulates the
+ well-known two-ID behavior by setting saved UID appropriately.)
+
+Then, the problem happens: when Perl process is running as a root
+(i.e. UID = EUID = 0), ANY OF
+
+     ($UID, $EUID) = (1, 1)  # (1)
+     $UID = 1                # (2)
+     $EUID = 1               # (3)
+
+WILL NOT DROP root privilege completely;
+The saved UID is kept to 0, leaving option to regain the root.
+
+    > sudo perl -e '($<, $>) = (1000, 1000); ($<, $>) = (0, 0); print $>'
+    0
+
+The same applies under the "setuid-script" condition; when EUID = 0,
+neither (1) nor (3) will not drop root privilege.
+
+    > sudo perl -e '($<, $>) = (1000, 0); $> = 1000; ($<, $>) = (0, 0); print $>'
+    0
+
+The reason is that both (1) and (3) calls setresuid with the third
+(saved UID) argument being -1 (meaning no change). It leaves hidden
+saved UID to be 0.
+
+For an unknown reason, the current implementation of (2) calls
+setreuid with second (effective UID) argument being -1.  It means
+that, the combinations "(1) then (2)" or "(3) then (2)" work (but the
+combination "(2) then (3)" DOES NOT work).
+
+    > sudo perl -e '$< = 1000; $> = 1000; $> = 0; print $>'
+    0
+    > sudo perl -e '$> = 1000; $< = 1000; $> = 0; print $>'
+    1000
+
+The SUID_SUDO module exploits this unexpected behavior to implement
+"drop_privileges_forever" function, but it is not guaranteed to work
+in any future versions of Perl.
+
+The author thinks that this behavior should be considered as a bug,
+because the Perl implementation intermixes three-ID model and two-ID
+model in an inconsistent manner; (1) and (3) should have used setreuid
+(or seteuid) absolutely.
+
+The Python/Ruby versions of "suid_sudo" module do not have this
+problem: the Python version uses setresuid (three-ID) thoroughly,
+where the Ruby version uses setreuid (two-ID) only.
+
+
+3. Security regarding the "interpreter name" and the "script name" etc.
+
+First, if the sudo configuration allows the invoking user to run any
+command as root, no security protection is meaningful and this topic
+ends here.
+
+Otherwise: the module tries to detect the absolute paths of the
+interpreter and the script itself to implement "sudo_wrap" features.
+Obviously, in the initial invocation, these two values might be
+tweaked by users, e.g. using (symbolic) links to the interpreter or
+the script.  If such a user-tweaked values are accepted by "sudo",
+security will be broken.
+
+So, _you must please specify_ the safe, absolute paths to the
+"sudoers" file.  Sudo will distinguish the interpreter or the script
+from the such imitations created by the symbolic links, and rejects
+them to be run by root.  If not, it's the fault of sudoers
+configuration, not this module.
+
+In other word, if some attack to the root privilege is possible via
+"sudo_wrap" feature, it can also be done directly by the user.
+
+Another problem might be caused by external module dependencies.  If
+the script is run from the user's environment via sudo, usually it is
+run in the current directory of the user's control, with clean
+environment variables (unless env_pass option of sudo is used).  It
+means that loading modules from the current directory is quite
+dangerous.
+
+Also, scripting language interpreters may be affected by some
+predefined environment variables (such as PYTHONPATH, RUBYOPTS,
+PERL5OPTS etc.).  The implementers of sudo is taking a great effort to
+make such kind of variables blacklisted, but care should be taken.
+For this purpose, this module adds Python's "-I" or "-sE" commandline
+option, by default, to ignore any environments affecting the
+interpreter, when "sudo_wrap" is used.  With Ruby and Perl, the "taint
+mode" (-T) is used to achieve this.
+
+Programmers using this module is strongly encouraged to include these
+switches in the "she-bang" lines, too.  If "use_shebang" is enabled,
+such options are taken from the she-bang line, not from the parameter
+to this module.
+
+c.f. In Perl and Ruby, if the script is invoked under "setuid
+   condition" (effective user/group ID != the user/group ID), the
+   interpreter will automatically enables the taint mode.  However,
+   these measures will not be active when the script is invoked via
+   sudo (because these IDs will both be "root").
+
+   The Ruby manual says that these measures will be effective for
+   setuid scripts; in fact, it will be effective only when the script
+   is _actually_ invoked under "setuid condition"; The "setuid"
+   permission bits of the script file is not significant.
+
+4. Communication paths between wrapping and wrapped processes
+
+When sudo_wrap is used, there are two instances of the script; first,
+non-privileged, user-invoked instance and second, privileged,
+sudo-invoked instance.  The processes will tell some additional
+information to the second, using the following vehicles.
+
+  - A command-line parameter:
+    Always at the first position, with a prefix "----sudo-wrap=".
+
+    The parameter is exposed to all users in the system, therefore
+    it contains only public information.
+
+    Currently, it contains:
+
+     - the process ID of the first process, equal to the process ID of
+       the "sudo";
+
+     - the real user ID and group ID of the first process, which
+       should be equal to those told from "sudo";
+
+     - A numeric key to the environment variable below;
+
+  - An environmental variable:
+  
+    It has a name starting with "LC__SUDOWRAP_", with some digits
+    after that.  An unused number is taken and passed in the command
+    line above.
+
+    It contains information on environment variables passed by
+    "pass_env" option.
+
+    The variable is readable by root and the user to be setuid'ed ---
+    which is equal to the invoking user; its visibility is as same as
+    the original content of the passed variable.
+
+    It is using a cheat that usual configuration of "sudo" allows to
+    pass all environment variables starting with "LC_" as
+    local-related ones.
+
+Although the content of these two values are encoded, clever users may
+invent these values by themselves; however, they can always get the
+same outcome by other easier means, such as directly setting the
+environment variables.
+
+Due to the limitation of allowed characters for LC_* variables in
+sudo, (sudo's env_check rule rejects "path-like" strings containing
+"/" and ":".)  the module uses URL-safe BASE64 for encoding these
+values.
+
+After reading the contents of these two variables, these are removed
+and hidden from the viewpoint of the scripting language at the module
+initialization time; however, it will be still visible from outside OS
+level. (Usually, modification to environment variables are reflected
+to the operating-system level only when exec is called.)
+
+5. racing with the parent
+
+To ensure safe emulation of setuid, this module acquires several
+information from the underlying operating process, especially the
+identity of the parent process.  These acquisition cannot be done
+atomically, so there will always be a race condition.
+
+If the parent is a realistic "sudo", it will properly wait the invoked
+command (interpreter) to terminate.  The sudo process instance is
+running with root privilege (both for real and effective UID), meaning
+that the invoking user (if not root) can not kill the "sudo".  In this
+case, the module can get reliable information of the parent "sudo"
+process.
+
+However, if the parent was not "sudo", the parent may trick a race
+with this module.  The most simple story is that the parent process
+can invoke the script then exec the "sudo" to replace the parent
+itself, before this module checks the parent's identity.  In this
+case, the module will see that the parent seems to be the "sudo", but
+the process itself does not have the root privilege (unless the trick
+was done by some program having the root privilege).  It will be
+properly handled by the module.
+
+Of course, the "root" user or any root-setuid program can do this
+trick to forge this module, but if they already have such a power,
+there is no need for them to attack this module.
+
+Currently, there is a small chance that this module raises a spurious
+error report, without any "malicious" operation.  This module will
+refuse to run the script in the condition that
+
+- the parent has exited at the checking time; i.e. the parent process
+  ID was 1; and
+
+- the script itself has a root privilege.
+
+(This condition is rejected anyway unless a non-recommended option
+ "realroot_ok" is configured.)
+
+In usual circumstance, the parent ID of 1 means that the parent was
+not "sudo" and has "daemonized" the script, giving away the right and
+the duty to check the return status of it.  However, if the script has
+a root privilege, there might be very rare circumstance of different
+cause that the parent "sudo" might have been killed accidentally by
+the operating system (for example, by insufficient memory) or by other
+root processes.  Therefore, for a safety, the module will reject this
+case by error. 
+
+To avoid this condition, the script should be invoked explicitly via
+sudo if you have the root privilege.  For the script which might be
+directly invoked from init (or equivalents such as systemd), we
+recommend to prepare a separate script that does not use this module.
