@@ -596,13 +596,15 @@ def _process_python_flags(python_flags, inherit_flags):
                 _add(keys_to_flags[key])
     return flags
 
-def _wrap_invoke_sudo(use_shebang=False, python_flags="I", inherit_flags=False, pass_env=[]):
+def _construct_wrap_invoke_cmdline(use_shebang, python_flags, inherit_flags, wrapkey):
     scriptname = os.path.abspath(sys.argv[0])
     execname = sys.executable
     if not os.path.exists(scriptname):
         raise SUIDSetupError("error: could not reinvoke script: could not found myself")
     if not os.path.exists(execname):
         raise SUIDSetupError("error: could not reinvoke script: interpreter not found")
+    if os.path.isdir(scriptname):
+        use_shebang = False
     if use_shebang:
         execname = []
         flags = []
@@ -610,24 +612,66 @@ def _wrap_invoke_sudo(use_shebang=False, python_flags="I", inherit_flags=False, 
         execname = [execname]
         flags = _process_python_flags(python_flags, inherit_flags=inherit_flags)
 
-    if pass_env:
-        env_var = _setup_passenv(pass_env)
-    else:
-        env_var = ""
-
     cmd = allowed_sudo[0]
     for c in allowed_sudo:
         if os.path.exists(c):
             cmd = c
             break
-    args = ["----sudo_wrap=%s" % (_encode_wrapper_info(env_var),)] + sys.argv[1:]
-    args = [cmd] + execname + flags + [scriptname]  + args
+    args = [cmd] + execname + flags + [scriptname, "----sudo_wrap=%s" % (wrapkey,)]
+    return cmd, args
+
+def _wrap_invoke_sudo(use_shebang=False, python_flags="IR", inherit_flags=False, pass_env=[]):
+    if pass_env:
+        env_var = _setup_passenv(pass_env)
+    else:
+        env_var = ""
+    wrapkey = _encode_wrapper_info(env_var)
+
+    cmd, cmdline = _construct_wrap_invoke_cmdline(
+        use_shebang=use_shebang, python_flags=python_flags,
+        inherit_flags=inherit_flags,
+        wrapkey=wrapkey)
+    args = cmdline +  sys.argv[1:]
     #print(args)
     try:
         os.execv(cmd, args)
     except OSError as e:
         raise SUIDSetupError("could not invoke %s for wrapping: %s" % (cmd, e.strerror))
     assert False
+
+def show_sudo_command_line(use_shebang, python_flags, inherit_flags, pass_env, check=False):
+    if check:
+        if len(sys.argv) <= 1 or sys.argv[1] != '--show-sudo-command-line':
+            return
+
+    import re
+    cmd, cmdline = _construct_wrap_invoke_cmdline(
+        use_shebang=use_shebang, python_flags=python_flags,
+        inherit_flags=inherit_flags,
+        wrapkey='')
+
+    cmdline_sudoers = [re.sub(r'([ =*\\])', r'\\\1', x) for x in cmdline]
+    del cmdline_sudoers[0] # sudo itself
+    sudoers = " ".join(cmdline_sudoers)
+    cmdstr = " ".join(cmdline)
+
+    print("""
+This command uses sudo internally. It will invoke itself as:
+
+%s...
+
+Corresponding sudoers line will be as follows:
+
+.user. ALL = (root:root) NOPASSWD: %s*
+
+".user." should be replaced either by username or by "ALL".
+
+Please check the above configuration is secure or not,
+before actually adding it to /etc/sudoers.
+    """ % (cmdstr, sudoers), file=sys.stderr)
+
+    if check:
+        exit(2)
 
 # Detect and initialize sudo'ed and suid'ed environment
 
@@ -644,8 +688,9 @@ def _pick_environment(ename, type=None):
 
 def suid_emulate(realroot_ok=False, nonsudo_ok=False,
                  sudo_wrap=False, use_shebang=False,
-                 python_flags="I", inherit_flags=False,
-                 user_signal=None, pass_env=[]):
+                 python_flags="IR", inherit_flags=False,
+                 user_signal=None, pass_env=[],
+                 accept_showcmd_opts=False):
     """Emulate behavior of set-uid binary when invoked via sudo(1).
 
     This function is to be invoked as early as possible in the script
@@ -693,7 +738,7 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
                      Use of this flag requires changes to the sudo
                      configuration.
 
-        python_flags: default "I"; only meaningful when sudo_wrap=True
+        python_flags: default "IR"; only meaningful when sudo_wrap=True
                       and use_shebang=False.  A string containing
                       one-character flags to be passed to the python
                       interpreter called when sudo_wrap=True.
@@ -718,17 +763,27 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
                   script really tells this module to do so.  Use this
                   feature only when it is really needed.
 
+        accept_showcmd_opts: default False; if enabled, this function
+                             will check for the first command-line
+                             option "--show-sudo-command-line".
+                             If it exists, it shows the command line
+                             for the re-invocation and exit.
     """
+    if _SuidStatus._status:
+        # already run
+        return _SuidStatus._status.is_suid
+
+    if accept_showcmd_opts:
+        show_sudo_command_line(
+            use_shebang=use_shebang, python_flags=python_flags,
+            inherit_flags=inherit_flags, pass_env=pass_env, check=True)
+
     uid, euid, suid = os.getresuid()
     wrapped_invocation_info = _detect_wrapped_reinvoked()
     is_sudoed = _called_via_sudo()
 
     if (not is_sudoed and wrapped_invocation_info):
         raise SUIDSetupError("Bad wrapper key found")
-
-    if _SuidStatus._status:
-        # already run
-        return _SuidStatus._status.is_suid
 
     if (uid != euid or euid != suid):
         # really suid-script (not supported in recent environment), or suid already set

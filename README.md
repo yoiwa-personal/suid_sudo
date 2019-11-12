@@ -98,7 +98,7 @@ Regarding the Python specifically, we strongly recommend that
   - The script will have `-I` (`-Es` in Python 2.7) flag in the
     she-bang line.
 
-  - When sudo_wrap option is enabled, keep `python_flags="I"`
+  - When sudo_wrap option is enabled, keep `python_flags="IR"`
     intact.
 
   - When there are data communications between processes of different
@@ -312,7 +312,7 @@ configured to match that invocation pattern.
  - If the `use_shebang` is not enabled, put something like the
    following entry:
 
-        user ALL = (root:root) NOPASSWD: /usr/bin/python3 -I /full/path/to/script *
+        user ALL = (root:root) NOPASSWD: /usr/bin/python3 -I -R /full/path/to/script *
 
    The path to the interpreter should be replaced according to the
    system installation.  The part `user` may be replaced by group
@@ -331,7 +331,7 @@ configured to match that invocation pattern.
 You can limit _unintentional_ invocation of script explicitly via sudo
 by specifying something like:
 
-     user ALL = (root:root) NOPASSWD: /usr/bin/python3 -I /full/path/to/script ----sudo_wrap\=*
+     user ALL = (root:root) NOPASSWD: /usr/bin/python3 -I -R /full/path/to/script ----sudo_wrap\=*
 
      user ALL = (root:root) NOPASSWD: /full/path/to/script ----sudo_wrap\=*
 
