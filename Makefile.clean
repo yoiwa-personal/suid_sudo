@@ -1,0 +1,13 @@
+#!/usr/bin/make
+
+clean: clean-python clean-ruby clean-perl
+
+clean-python:
+	rm -rf suid_sudo.egg-info build dist
+
+clean-ruby:
+	rm -f suid_sudo-*.gem
+
+clean-perl:
+	-test -f Makefile && $(MAKE) clean
+	rm -f MYMETA.json MYMETA.yml Makefile.old SUID_SUDO-*.tar.gz

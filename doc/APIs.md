@@ -1,6 +1,6 @@
-[]( -*- gfm -*- )
+[-]: # " -*- mode: gfm; coding: utf-8 -*- "
 
-# API functions
+# API functions of suid_sudo module
 
 Some constants (e.g. `True` / `true`, `False` / `false`) will have
 different symbols between Python and Ruby.  Please read it according
@@ -8,7 +8,7 @@ to each language.
 
 In Perl, keyword arguments should be passed as a string-named hash,
 and truth values are treated according to usual language semantics.
-for example, write as:
+For example, you can write as:
 
     suid_emulate(use_shebang => 1);
 
@@ -34,7 +34,7 @@ will load `SUID_SUDO` module. (capitalized for Ruby constant.)
 If you want to use it without module prefix, write:
 
     require 'suid_sudo'
-	include SUID_SUDO::INCLUDE
+    include SUID_SUDO::INCLUDE
 
 (Direct inclusion of `SUID_SUDO` module will import many internal
 private symbols.)
@@ -45,11 +45,11 @@ in Perl,
 
 will load the module into the SUID_SUDO package.
 
-	use SUID_SUDO ":all";
+    use SUID_SUDO ":all";
 
 will also import API functions into current package context.
 
-## Set-up routine
+## Set-up Routine
 
 ### suid_emulate
 
@@ -107,19 +107,19 @@ All arguments are optional and these meanings are as follows:
    one-character flags to be passed to the python interpreter called
    when sudo_wrap=True.
 
-   In Python 2.7, "I" flag will be translated to combination 
+   In Python 2.7, "I" flag will be translated to combination
    "-E -s" flags.
 
  * ruby_flags: (Ruby only) default "T"; only meaningful when
    sudo_wrap=True and use_shebang=False.  A string containing
    one-character flags to be passed to the Ruby interpreter called
    when sudo_wrap=true.
- 
+
  * perl_flags: (Perl only) default "T"; only meaningful when
    sudo_wrap=True and use_shebang=False.  A string containing
    one-character flags to be passed to the Ruby interpreter called
    when sudo_wrap=true.
- 
+
  * inherit_flags: default False; only meaningful when sudo_wrap=True
    and use_shebang=False.  If set to True, it will pass some of the
    flags originally passed to the Python/Ruby/Perl interpreter.
@@ -146,33 +146,33 @@ In Python, a code block can be specified using "with" statement.
 The following two blocks are similar after call to `suid_emulate()`.
 
     temporarily_as_user()
-	do_user_level_task...
-	temporarily_as_root()
+    do_user_level_task...
+    temporarily_as_root()
 
-	with temporarily_as_user:
-		do_user_level_task...
+    with temporarily_as_user:
+        ... do_user_level_task ...
 
-In Ruby, a code block can be specified as a block parameter to 
+In Ruby, a code block can be specified as a block parameter to
 functions, as follows:
 
     temporarily_as_user
-	do_user_level_task...
-	temporarily_as_root
+    do_user_level_task...
+    temporarily_as_root
 
-	temporarily_as_user {
-		do_user_level_task...
-	}
+    temporarily_as_user {
+        ... do_user_level_task ...
+    }
 
 In Perl, a code block can be specified as a code reference argument
 to functions as follows:
 
     temporarily_as_user;
-	do_user_level_task...
-	temporarily_as_root;
+    ... do_user_level_task ...
+    temporarily_as_root;
 
-	temporarily_as_user {
-		do_user_level_task...
-	};
+    temporarily_as_user {
+        ... do_user_level_task ...
+    };
 
 In Ruby, you can also use system-builtin `Process::UID` and
 `Process::GID` modules.  Please do not mix use of these modules and
@@ -198,7 +198,7 @@ Secondary groups are set to those of the unprivileged user.
 
 It should not be used to run any untrusted code or programs,
 because these can regain the root privilege by seteuid(2) or
-temporarily_as_root() above.
+`temporarily_as_root()` above.
 
 ### drop_privileges_forever
 
@@ -209,26 +209,23 @@ It can be used to execute a command for which the calling user can do
 whatever (e.g. shell, editor or language interpreter), or to perform
 possibly-dangerous operation (e.g. eval or import).
 
-After calling this, the process can no longer call
-temporarily_as_root() or other similar functions.  Using this as an
-context manager (Python) / with a block argument (Ruby) is
-meaningless, because it cannot revert privileged status anymore.  If
-really needed, consider using fork() or {call/run}_in_subprocess()
-described below to separate the unprivileged operations to a child
-process.
+After calling this, the process can not call `temporarily_as_root()`
+or other similar functions to revert the privileged status anymore.
+Using this as an context manager (Python) / with a block argument
+(Ruby) is also meaningless. If really needed, consider using `fork()` or
+`{call/run}_in_subprocess()` described below to separate the
+unprivileged operations to a child process.
 
-## Calling an external program
-
-(Not yet implemented for Perl)
+## Calling an External Program
 
 ### in Python
 
 In Python, if you need to call an external program with an altered
 privilege, pass one of the above privilege-changing function to a
-"preexec_fn" parameter of functions in subprocess built-in module.
+`preexec_fn` parameter of functions in subprocess built-in module.
 
     import subprocess
-	subprocess.call(args=["vi", "/tmp/file"],
+    subprocess.call(args=["vi", "/tmp/file"],
                     preexec_fn=drop_privileges_forever)
 
 ### in Ruby: spawn_in_privilege
@@ -243,7 +240,7 @@ with two additional arguments at the beginning:
    If `:spawn` is given, the function will return immediately when
    invoking the child program is succeeded, and its process ID is
    returned.
-   
+
    In either case, if it cannot "exec" the child program, it will
    raise an appropriate OSError instance synchronously.
 
@@ -260,8 +257,8 @@ with two additional arguments at the beginning:
 
 The usage equivalent to above Python example is as follows:
 
-	spawn_in_privilege(:system, :drop_privileges_forever,
-	                    "vi", "/tmp/file")
+    spawn_in_privilege(:system, :drop_privileges_forever,
+                        "vi", "/tmp/file")
 
 ### in Perl: spawn_in_privilege
 
@@ -284,18 +281,18 @@ Its semantics tends to be similar to `system()` in Perl; however,
     to bypass any shell interventions.  The arguments are translated as
     follows:
 
-    	spawn_in_privilege(..., ..., a) => exec(a)
-    	spawn_in_privilege(..., ..., a, b) => exec(a, b)
-    	spawn_in_privilege(..., ..., [a]) => exec a (a)
-    	spawn_in_privilege(..., ..., [a, b]) => exec a (a, b)
-    	spawn_in_privilege(..., ..., [[a, a0], b]) => exec a (a0, b) 
+        spawn_in_privilege(..., ..., a) => exec(a)
+        spawn_in_privilege(..., ..., a, b) => exec(a, b)
+        spawn_in_privilege(..., ..., [a]) => exec a (a)
+        spawn_in_privilege(..., ..., [a, b]) => exec a (a, b)
+        spawn_in_privilege(..., ..., [[a, a0], b]) => exec a (a0, b)
 
 If the first argument is "spawn" and the execution of command has
 succeeded, it will return the process ID of the child.
 
 Please do not use "child reaper" signal handlers with "system".
 
-## Running some code in sub-process
+## Running Some Code in Sub-process
 
 As said above, untrusted code should be run with "completely
 untrusted" privilege.  It means that the result of such untrusted
@@ -314,8 +311,8 @@ OK.
 Exceptions are also propagated to the caller in a limited manner.
 Most of the built-in exceptions (especially system-call errors)
 are transparently passed to the parent; non-builtin Exceptions are
-either coersed to a parent built-in exception or wrapped with
-WrappedSubprocessError excepion.
+either coerced to a parent built-in exception or wrapped with
+WrappedSubprocessError exception.
 
 The called function MUST return some value or raise an exception
 within Python.
@@ -335,7 +332,7 @@ either write:
         drop_privileges_forever()
         return what_to_do(...)
     result = call_in_subprocess(_)
-    
+
 or
 
     # dirty trick
@@ -343,7 +340,7 @@ or
     def result():
         drop_privileges_forever()
         return what_to_do(...)
-    
+
 Current implementation uses safe subset of Pickle bytecode
 for return value communication in Python.
 
@@ -430,6 +427,17 @@ It is a subclass of `SUIDSubprocessError`.
 
 In Perl, a blessed object defined in SUID_SUDO:: package hierarchy
 will be thrown (by `die`) when any error has occurred.  See `perlfunc`
-manpage for details on how to handle these in an object-oriented way.
-`SUIDPrivilegesSettingFatalError` is not provided in Perl, as
+manual page for details on how to handle these in an object-oriented
+way.  `SUIDPrivilegesSettingFatalError` is not provided in Perl, as
 exception handling construct of Perl is very simple.
+
+## Reference
+
+ * suid_sudo: https://github.com/yoiwa-personal/suid_sudo/
+
+## Author
+
+Yutaka OIWA <yutaka@oiwa.jp>.
+
+This file should be treated as a part of suid_sudo module,
+distributed under Apache License 2.0.

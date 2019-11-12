@@ -1,5 +1,8 @@
-[]( -*- gfm -*- )
+[-]: # " -*- mode: gfm; coding: utf-8 -*- "
+
 # SUID_SUDO: Emulate behavior of set-uid binary when invoked via sudo(1).
+
+https://github.com/yoiwa-personal/suid_sudo/
 
 ## Overview
 
@@ -105,12 +108,12 @@ Regarding the Python specifically, we strongly recommend that
 Regarding the Ruby, we strongly recommend that
 
   - The script will have `-T` flag in the shebang line to ignore
-	environment variables.
-	
-	It means that the script must be written in taint-aware way.
-	(Recent Ruby versions allows dropping the security level from the
-	script, but it is not recommended for just avoiding taint-aware
-	programming.)
+    environment variables.
+    
+    It means that the script must be written in taint-aware way.
+    (Recent Ruby versions allows dropping the security level from the
+    script, but it is not recommended for just avoiding taint-aware
+    programming.)
 
   - When sudo_wrap option is enabled, keep `ruby_flags='T'` intact.
 
@@ -121,9 +124,9 @@ Regarding the Ruby, we strongly recommend that
 Regarding the Perl, we strongly recommend that
 
   - The script will have `-T` (or at least `-t`) flag in the shebang
-	line to ignore environment variables.
-	
-	It means that the script must be written in an taint-aware way.
+    line to ignore environment variables.
+    
+    It means that the script must be written in an taint-aware way.
 
   - When sudo_wrap option is enabled, keep `perl_flags='T'` intact.
 
@@ -169,7 +172,8 @@ with this module.
 
 ## Programmer's Usage
 
-See `doc/APIs.md` for more detailed usage of each API functions.
+See [API documentation](doc/APIs.md) and
+[packaging/install instructions](doc/INSTALL.md) for more details.
 
 ### Initialization
 
@@ -203,7 +207,7 @@ The following four functions will set-up effective and real user-ids
 - temporarily_as_real_root: set both effective user-id and real user-id
   to the root.  Useful when the script calls external programs which are
   "setuid-aware" (e.g. mount(8)).
-  
+
 - drop_privileges_forever: set both effective user-id and real user-id
   to the ordinary user;  there will be no way to revert to the set-uid
   status.  Required to call any untrusted programs such as editors.
@@ -212,39 +216,39 @@ It can be used either as an ordinary function or as a context manager
 (Python) / iterator (Ruby/Perl). For example, either
 
     temporarily_as_user()
-	do_user_level_task...
-	temporarily_as_root()
+    do_user_level_task...
+    temporarily_as_root()
 
 or
 
     # Python
-	with temporarily_as_user:
-		do_user_level_task...
+    with temporarily_as_user:
+        do_user_level_task...
 
     # Ruby/Perl
-	temporarily_as_user {
-		do_user_level_task...
-	}
+    temporarily_as_user {
+        do_user_level_task...
+    }
 
 is possible.
 
 ### Calling sub-program with privilege setting
 
-In Python, to call external programs with a specific privilege, 
+In Python, to call external programs with a specific privilege,
 pass one of the above functions to the `preexec_fn` argument of
 library functions in the "subprocess" module.  For example,
 
     # Python
-	import subprocess
-	subprocess.call(args=["vi", "/tmp/file"],
+    import subprocess
+    subprocess.call(args=["vi", "/tmp/file"],
                     preexec_fn=drop_privileges_forever)
 
 In Ruby/Perl, this module provides a wrapper function to spawn/system
 with privilege setting.
 
     # Ruby
-	spawn_in_privilege(:system, :drop_privileges_forever,
-	                    "vi", "/tmp/file")
+    spawn_in_privilege(:system, :drop_privileges_forever,
+                        "vi", "/tmp/file")
 
 The first argument is a symbol either `:system` or `:spawn`,
 and the second argument is a symbol corresponding to the above
@@ -265,21 +269,21 @@ parent.
 
 In Python, `call_in_subprocess` is useful in the following way:
 
-	... calling code ...
-	
-	def job_to_do():
-		drop_privileges_forever()
-	    ... untrusted code ...
-		return (...)
-	retvalue = call_in_subprocess(job_to_do)
+    ... calling code ...
+    
+    def job_to_do():
+        drop_privileges_forever()
+        ... untrusted code ...
+        return (...)
+    retvalue = call_in_subprocess(job_to_do)
 
 In Ruby/Perl, `run_in_subprocess` is available as follows:
 
     retvalue = run_in_subprocess {
-		drop_privileges_forever
-		... untrusted code ...
-		(return value)
-	}
+        drop_privileges_forever
+        ... untrusted code ...
+        (return value)
+    }
 
 For security keeping, values transported from the sub-process are
 limited to those presentable in JSON or little more.  Exceptions are
@@ -321,7 +325,7 @@ configured to match that invocation pattern.
 
  - If the `use_shebang` is enabled, put something like the
    following entry:
-   
+
         user ALL = (root:root) NOPASSWD: /full/path/to/script
 
 You can limit _unintentional_ invocation of script explicitly via sudo
@@ -341,3 +345,19 @@ by "sudo".  Porting to other POSIX.1 compilient Unix-like systems
 should be easy.
 
 The Linux dependent code is inside the "called_via_sudo" function.
+
+## Copyright
+
+Copyright 2019 Yutaka OIWA <yutaka@oiwa.jp>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

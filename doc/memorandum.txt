@@ -1,4 +1,9 @@
-MEMORANDUM
+MEMORANDUM for suid_sudo module
+    Yutaka OIWA <yutaka@oiwa.jp>
+
+    This file is a part of the suid_sudo package,
+    distributed under Apache License 2.0.
+    https://github.com/yoiwa-personal/suid_sudo
 
 1. Security risks related to `nonsudo_ok` option
 
@@ -50,7 +55,7 @@ a-2) when it was actually invoked VIA sudo:
 
    Again, it does not have root privilege and nothing it can do.
 
-   Thin possibility of misconfiguration is that sudo should 
+   Thin possibility of misconfiguration is that sudo should
    be configured to run the script as no one other than root.
    (except when the invoking user is allowed to run any command as
    root and others.)
@@ -260,7 +265,7 @@ information to the second, using the following vehicles.
      - A numeric key to the environment variable below;
 
   - An environmental variable:
-  
+
     It has a name starting with "LC__SUDOWRAP_", with some digits
     after that.  An unused number is taken and passed in the command
     line above.
@@ -338,7 +343,7 @@ a root privilege, there might be very rare circumstance of different
 cause that the parent "sudo" might have been killed accidentally by
 the operating system (for example, by insufficient memory) or by other
 root processes.  Therefore, for a safety, the module will reject this
-case by error. 
+case by error.
 
 To avoid this condition, the script should be invoked explicitly via
 sudo if you have the root privilege.  For the script which might be

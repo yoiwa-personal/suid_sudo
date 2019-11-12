@@ -1,7 +1,21 @@
 # -*- python -*-
 # Python library to simulate suid-script by sudo
-# (c) 2019 Yutaka OIWA.
-# Redistributable under Apache License 2.0. see "LICENSE.txt".
+#
+# https://github.com/yoiwa-personal/suid_sudo/
+#
+# Copyright 2019 Yutaka OIWA <yutaka@oiwa.jp>.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 """Emulate behavior of set-uid binary when invoked via sudo(1).
 
@@ -110,7 +124,7 @@ class SUIDPrivilegesSettingFatalError(BaseException):
     If you really need this case to be captured and treated, please
     write exception-handling code very carefully in the manner which
     can be run with unknown/unexpected privileges, then you can catch
-    this "exception" by its name 
+    this "exception" by its name
     ("try: ... except SUIDPrivilegesSettingFatalError: ...").
 
     """
@@ -293,7 +307,7 @@ class _Surround_Info:
 
         # is_root = Process::euid == 0
         # is_suid = Process::euid != Process::uid
-            
+
         stat_proc = os.stat("/proc")
         # sanity check: existence of the proc file system
         if not (stat_proc.st_uid == 0 and stat_proc.st_gid == 0 and
@@ -511,12 +525,12 @@ def _called_via_sudo():
         if has_root:
             raise SUIDSetupError("cannot check parent process: #{surround_info.status}")
         if surround_info.p_path in allowed_sudo:
-            return True 
+            return True
         # p_path may be error instance but it's OK
         return False
     elif surround_info.status is _Surround_Info.SUCCESS:
         if surround_info.p_path in allowed_sudo:
-            return True 
+            return True
         if not has_root:
             return False
 
@@ -544,8 +558,8 @@ def _called_via_sudo():
             raise SUIDSetupError("Error: cannot check details of %s: %r" % (parent_exe, e))
         return False
     else:
-        raise #notreached    
-    
+        raise #notreached
+
 def _process_python_flags(python_flags, inherit_flags):
     flags = []
     disallowed = ('c', 'i', 'm', 'h', 'V', 'd')

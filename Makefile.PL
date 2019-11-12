@@ -3,9 +3,12 @@ use ExtUtils::MakeMaker;
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
 
+open VERSION, 'VERSION' or die $!;
+chomp (our $VERSION = scalar <VERSION>);
+
 WriteMakefile(
 	      NAME              => 'SUID_SUDO',
-	      VERSION           => '0.1',
+	      VERSION           => $VERSION,
 	      ABSTRACT          => 'A library for emulating setuid by sudo',
 	      AUTHOR            => 'Yutaka OIWA <yutaka@oiwa.jp>',
 	      LICENSE           => 'apache',
