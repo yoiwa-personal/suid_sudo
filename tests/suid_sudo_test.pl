@@ -1,6 +1,8 @@
 #!/usr/bin/perl -T
-package main;
-BEGIN { unshift @INC, "."; }
+use FindBin;
+BEGIN {"$FindBin::RealBin/.." =~ /(.*)/; our $Lib = $1}; # $RealBin is tainted
+use lib $Lib;
+
 use SUID_SUDO ":all";
 use Data::Dumper;
 

@@ -1,9 +1,10 @@
 #!/usr/bin/ruby -T
-require './suid_sudo'
 if __FILE__ != $0
   p "run directly."
   exit(1)
 end
+require File.absolute_path("../suid_sudo", File.dirname(__FILE__)).untaint
+# require_relative claims insecure operation
 
 include SUID_SUDO::INCLUDE
 p suid_emulate(sudo_wrap:true, use_shebang:false, pass_env:['TESTVAR'])

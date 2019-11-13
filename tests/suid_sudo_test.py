@@ -2,7 +2,8 @@
 if __name__ != '__main__': raise RuntimeError("Should not be imported.")
 
 import sys
-sys.path.insert(0, ".")
+import os.path
+sys.path.insert(0, os.path.dirname(sys.argv[0]) + "/..")
 import suid_sudo
 from suid_sudo import *
 _SuidStatus = suid_sudo._SuidStatus
