@@ -109,7 +109,7 @@ Regarding the Ruby, we strongly recommend that
 
   - The script will have `-T` flag in the shebang line to ignore
     environment variables.
-    
+
     It means that the script must be written in taint-aware way.
     (Recent Ruby versions allows dropping the security level from the
     script, but it is not recommended for just avoiding taint-aware
@@ -125,7 +125,7 @@ Regarding the Perl, we strongly recommend that
 
   - The script will have `-T` (or at least `-t`) flag in the shebang
     line to ignore environment variables.
-    
+
     It means that the script must be written in an taint-aware way.
 
   - When sudo_wrap option is enabled, keep `perl_flags='T'` intact.
@@ -270,7 +270,7 @@ parent.
 In Python, `call_in_subprocess` is useful in the following way:
 
     ... calling code ...
-    
+
     def job_to_do():
         drop_privileges_forever()
         ... untrusted code ...
