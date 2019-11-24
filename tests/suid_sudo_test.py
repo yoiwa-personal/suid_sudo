@@ -13,7 +13,7 @@ def print_ids():
     print (os.getresuid(), os.getresgid(), os.getgroups())
 
 suid_emulate(sudo_wrap=True, inherit_flags=True, realroot_ok=True, nonsudo_ok=True,
-             pass_env = ["TESTVAR"])
+             pass_env = ["TESTVAR"], showcmd_opts=True)
 
 cmd = sys.argv[1] if len(sys.argv) >= 2 else "0"
 

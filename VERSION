@@ -1,6 +1,11 @@
+0.99.2
+
+optional API parameter showcmd_opts is added.
+
+
 0.99.1
 
-Pre release
+Pre release.
 
 # Brief version history is prepended.
 # The first line will be used for packaging.

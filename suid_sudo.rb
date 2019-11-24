@@ -647,32 +647,26 @@ module SUID_SUDO
     assert false
   end
 
-  # Show the commandline pattern which is used for reinvocation via sudo.
+  # Returns the commandline pattern which is used for reinvocation via sudo.
   #
-  # Output is sent to stderr.
+  # Returned value is a pair of strings to be displayed: the first is
+  # the sudo command line, and the second is a possible template for
+  # the sudoers configuration.
   #
-  # Parameters use_shebang, ruby_flags, inherit_flags, pass_env are
+  # Parameters use_shebang, python_flags, inherit_flags, pass_env are
   # as same as suid_emulate().
   #
-  # If check is True, it will check the first command line parameter.
-  # if it is "--show-sudo-command-line", it will show the information
-  # and terminate the self process automatically.
-  # Otherwise, do nothing.
-  #
-  # If script want to use own logics or conditions for showing this
-  # information, call this function with check:false (default).
-  def show_sudo_command_line(use_shebang:false, ruby_flags:"T", inherit_flags:false,
-                             pass_env:[], check:false)
-    if check
-      if ARGV.length < 1 or ARGV[0] != '--show-sudo-command-line'
-        return
-      end
-    end
-
+  # The parameter user_str is used in the position of the invoking
+  # user name in sudoers.
+  def compute_sudo_commane_line_patterns(use_shebang:false, ruby_flags:"T",
+                                         inherit_flags:false,
+                                         pass_env:[], user_str:".user.")
     cmd, cmdline = _construct_wrap_invoke_cmdline(
         use_shebang:use_shebang, ruby_flags:ruby_flags,
         inherit_flags:inherit_flags,
         wrapkey:'')
+
+    cmdstr = cmdline.join(" ")
 
     cmdline_sudoers = cmdline.map {|x|
       x.gsub(/([ =*\\])/) { |s| "\\" + s }
@@ -680,7 +674,41 @@ module SUID_SUDO
     cmdline_sudoers.shift
 
     sudoers = cmdline_sudoers.join(" ")
-    cmdstr = cmdline.join(" ")
+    sudoers = "#{user_str} ALL = (root:root) NOPASSWD: #{sudoers}*"
+
+    return cmdstr, sudoers
+  end
+
+  # Show the commandline pattern which is used for reinvocation via sudo.
+  #
+  # Output is sent to stderr.
+  #
+  # Parameters use_shebang, ruby_flags, inherit_flags, pass_env are
+  # as same as suid_emulate().
+  #
+  # If check is a truth value, it will be compared with the first
+  # command line parameter.  if these are equal, it will show the
+  # information and terminate the self process automatically.
+  # Otherwise, do nothing.  A special value "true" is treated as
+  # "--show-sudo-command-line".
+  #
+  # If script want to use own logics or conditions for showing this
+  # information, call this function with check:false (default).
+  def show_sudo_command_line(use_shebang:false, ruby_flags:"T", inherit_flags:false,
+                             pass_env:[], check:false)
+    if check
+      if check == true
+        check = '--show-sudo-command-line'
+      end
+      if ARGV.length < 1 or ARGV[0] != check
+        return
+      end
+    end
+
+    cmdstr, sudoers = compute_sudo_commane_line_patterns(
+              use_shebang:false, ruby_flags:"T",
+              inherit_flags:false,
+              pass_env:[], user_str:".user.")
 
     $stderr.printf('
 This command uses sudo internally. It will invoke itself as:
@@ -689,9 +717,9 @@ This command uses sudo internally. It will invoke itself as:
 
 Corresponding sudoers line will be as follows:
 
-.user. ALL = (root:root) NOPASSWD: %s*
+%s
 
-".user." should be replaced either by username or by "ALL".
+".user." should be replaced either by a user name or by "ALL".
 
 Please check the above configuration is secure or not,
 before actually adding it to /etc/sudoers.
@@ -793,24 +821,25 @@ before actually adding it to /etc/sudoers.
   #  if the script really tells this module to do so.  Use this
   #  feature only when it is really needed.
   #
-  # [accept_showcmd_opts]
+  # [showcmd_opts]
   #
-  # default false: if enabled, this function will check for the first
-  # command-line option "--show-sudo-command-line".  If it exists, it
-  # shows the command line for the re-invocation and exit.
+  # default nil: if a string is given, this function will compare it
+  # with first command-line argument.  If it matches, it shows the
+  # command line for the re-invocation and exit.  If "True" is passed,
+  # it is treated as if it were "--show-sudo-command-line".
 
   def suid_emulate(realroot_ok:false, nonsudo_ok:false,
                    sudo_wrap:false, use_shebang:false,
                    ruby_flags:"T", inherit_flags:false,
-                   pass_env:[], accept_showcmd_opts:false)
+                   pass_env:[], showcmd_opts:nil)
     if SUID_STATUS_::_status
       return SUID_STATUS_::_status.is_suid
     end
 
-    if accept_showcmd_opts
+    if showcmd_opts
       show_sudo_command_line(
         use_shebang:use_shebang, ruby_flags:ruby_flags,
-        inherit_flags:inherit_flags, pass_env:pass_env, check:true)
+        inherit_flags:inherit_flags, pass_env:pass_env, check:showcmd_opts)
     end
 
     uid = Process::Sys::getuid
@@ -1256,8 +1285,8 @@ before actually adding it to /etc/sudoers.
   module_function :run_in_subprocess, :suid_emulate,
                   :temporarily_as_root, :temporarily_as_user,
                   :temporarily_as_real_root, :drop_privileges_forever,
-                  :spawn_in_privilege, :show_sudo_command_line
-
+                  :spawn_in_privilege, :show_sudo_command_line,
+                  :compute_sudo_commane_line_patterns
   require 'forwardable'
 
   # Module to be imported in main namespace, if you want

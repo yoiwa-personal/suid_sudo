@@ -66,6 +66,7 @@ SECURITY WARNING:
     Please read README.md for security details.
 """
 
+from __future__ import print_function # for Python2
 import sys
 import os
 import os.path
@@ -213,6 +214,60 @@ class _Surround_Info:
 
     @classmethod
     def check_surround(self):
+        """Acquire a "consistent" information on the parent process.
+
+        A struct containing the following member is returned:
+           status: a symbol representing the result combination
+           ppid:   the process ID of the parrent process.
+           p_path: the path of the executable.
+           p_stat: the stat information of p_path.
+
+        The following combinations will be availble.
+
+        (1) If the parent is alive and accesible:
+            (status: SUCCESS,
+             ppid:   integer,
+             p_path: string
+             p_stat: a stat struct)
+
+            These three pieces of information are guaranteed to be
+            consistent and referring to the same "process" object,
+            at some instant moment during this function was running.
+            It might be different from the things "now".
+
+        (2) If the parent is alive but not accessible:
+            (e.g. running as non-root, parent has different privilege)
+            (status: EPERM,
+             ppid:   integer,
+             p_path: either a string or an Error instance (EACCES or EPERM),
+             p_stat: an Error instance (EACCES or EPERM))
+
+            These three pieces of information are guaranteed to be
+            consistent at some instant moment during this function was
+            running.
+
+        (3) If the parent has died early:
+
+            (status: ENOENT,
+             ppid:   integer or 1,
+             p_path: nil,
+             p_stat: nil)
+
+            If the parent died before this function started examining,
+            ppid will be 1.
+            Otherwise, if the parent died during examining, ppid will be
+            the first available value.
+
+        Errors:
+          Errno::EAGAIN:
+             will be raised if the function fails to acquire a
+             consistent information with several times of trials.
+          RuntimeError:
+             will be raised if things get something unexpected.
+
+        Caveats: what happens if two executable ping-pongs altogether?
+        (OK for suid_sudo because it will never happen when one side is sudo)
+        """
         if self._surrounds: return _surrounds
         surrounds = self._surrounds = _Surround_Info()
         return surrounds
@@ -220,6 +275,8 @@ class _Surround_Info:
     _procexe_linkname = None
     @classmethod
     def procexe_linkname(self, pid):
+        """Returns a path name of the "executable path" link for a given process ID.
+        Existence of /proc file system is assumed."""
         if self._procexe_linkname == None:
             self_pid = os.getpid()
             for l in ("exe", "file"):
@@ -237,60 +294,6 @@ class _Surround_Info:
                 raise SUIDSetupError("cannot read /proc to check sudo")
 
         return "/proc/%d/%s" % (pid, self._procexe_linkname)
-
-    # Acquire a "consistent" information on the parent process.
-    #
-    # A struct containing the following member is returned:
-    #    status: a symbol representing the result combination
-    #    ppid:   the process ID of the parrent process.
-    #    p_path: the path of the executable.
-    #    p_stat: the stat information of p_path.
-    #
-    # The following combinations will be availble.
-    #
-    # (1) If the parent is alive and accesible:
-    #     (status: SUCCESS,
-    #      ppid:   integer,
-    #      p_path: string
-    #      p_stat: a stat struct)
-    #
-    #     These three pieces of information are guaranteed to be
-    #     consistent and referring to the same "process" object,
-    #     at some instant moment during this function was running.
-    #     It might be different from the things "now".
-    #
-    # (2) If the parent is alive but not accessible:
-    #     (e.g. running as non-root, parent has different privilege)
-    #     (status: EPERM,
-    #      ppid:   integer,
-    #      p_path: either a string or an Error instance (EACCES or EPERM),
-    #      p_stat: an Error instance (EACCES or EPERM))
-    #
-    #     These three pieces of information are guaranteed to be
-    #     consistent at some instant moment during this function was
-    #     running.
-    #
-    # (3) If the parent is died early:
-    #
-    #     (status: ENOENT,
-    #      ppid:   integer or 1,
-    #      p_path: nil,
-    #      p_stat: nil)
-    #
-    #     If the parent died before this function started examining,
-    #     ppid will be 1.
-    #     Otherwise, if the parent died during examining, ppid will be
-    #     the first available value.
-    #
-    # Errors:
-    #   Errno::EAGAIN:
-    #      will be raised if the function fails to acquire a
-    #      consistent information with several times of trials.
-    #   RuntimeError:
-    #      will be raised if things get something unexpected.
-    #
-    # Caveats: what happens if two executable ping-pongs altogether?
-    # (OK for suid_sudo because it will never happen when one side is sudo)
 
     def __init__(self):
 
@@ -639,7 +642,38 @@ def _wrap_invoke_sudo(use_shebang=False, python_flags="IR", inherit_flags=False,
         raise SUIDSetupError("could not invoke %s for wrapping: %s" % (cmd, e.strerror))
     assert False
 
+def compute_sudo_commane_line_patterns(use_shebang, python_flags, inherit_flags, pass_env, user_str):
+    """Returns the commandline pattern which is used for reinvocation via sudo.
+
+    Returned value is a pair of strings to be displayed: the first is
+    the sudo command line, and the second is a possible template for
+    the sudoers configuration.
+
+    Parameters use_shebang, python_flags, inherit_flags, pass_env are
+    as same as suid_emulate().
+
+    The parameter user_str is used in the position of the invoking
+    user name in sudoers.
+    """
+
+    import re
+
+    cmd, cmdline = _construct_wrap_invoke_cmdline(
+        use_shebang=use_shebang, python_flags=python_flags,
+        inherit_flags=inherit_flags,
+        wrapkey='')
+
+    cmdstr = " ".join(cmdline)
+
+    cmdline_sudoers = [re.sub(r'([ =*\\])', r'\\\1', x) for x in cmdline]
+    del cmdline_sudoers[0] # sudo itself
+    sudoers = " ".join(cmdline_sudoers)
+    sudoers = "%s ALL = (root:root) NOPASSWD: %s*" % (user_str, sudoers)
+
+    return cmdstr, sudoers
+
 def show_sudo_command_line(use_shebang, python_flags, inherit_flags, pass_env, check=False):
+
     """Show the commandline pattern which is used for reinvocation via sudo.
 
     Output is sent to stderr.
@@ -647,10 +681,11 @@ def show_sudo_command_line(use_shebang, python_flags, inherit_flags, pass_env, c
     Parameters use_shebang, python_flags, inherit_flags, pass_env are
     as same as suid_emulate().
 
-    If check is True, it will check the first command line parameter.
-    if it is "--show-sudo-command-line", it will show the information
-    and terminate the self process automatically.
-    Otherwise, do nothing.
+    If check is a truth value, it will be compared with the first
+    command line parameter.  if these are equal, it will show the
+    information and terminate the self process automatically.
+    Otherwise, do nothing.  A special value True is treated as
+    "--show-sudo-command-line".
 
     If script want to use own logics or conditions for showing this
     information, call this function with check=False (default).
@@ -658,19 +693,14 @@ def show_sudo_command_line(use_shebang, python_flags, inherit_flags, pass_env, c
     """
 
     if check:
-        if len(sys.argv) <= 1 or sys.argv[1] != '--show-sudo-command-line':
+        if check is True:
+            check = "--show-sudo-command-line"
+        if len(sys.argv) <= 1 or sys.argv[1] != check:
             return
 
-    import re
-    cmd, cmdline = _construct_wrap_invoke_cmdline(
+    cmdstr, sudoers = compute_sudo_commane_line_patterns(
         use_shebang=use_shebang, python_flags=python_flags,
-        inherit_flags=inherit_flags,
-        wrapkey='')
-
-    cmdline_sudoers = [re.sub(r'([ =*\\])', r'\\\1', x) for x in cmdline]
-    del cmdline_sudoers[0] # sudo itself
-    sudoers = " ".join(cmdline_sudoers)
-    cmdstr = " ".join(cmdline)
+        inherit_flags=inherit_flags, pass_env=pass_env, user_str=".user.")
 
     print("""
 This command uses sudo internally. It will invoke itself as:
@@ -679,9 +709,9 @@ This command uses sudo internally. It will invoke itself as:
 
 Corresponding sudoers line will be as follows:
 
-.user. ALL = (root:root) NOPASSWD: %s*
+%s
 
-".user." should be replaced either by username or by "ALL".
+".user." should be replaced either by a user name or by "ALL".
 
 Please check the above configuration is secure or not,
 before actually adding it to /etc/sudoers.
@@ -707,7 +737,7 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
                  sudo_wrap=False, use_shebang=False,
                  python_flags="IR", inherit_flags=False,
                  user_signal=None, pass_env=[],
-                 accept_showcmd_opts=False):
+                 showcmd_opts=None):
     """Emulate behavior of set-uid binary when invoked via sudo(1).
 
     This function is to be invoked as early as possible in the script
@@ -718,82 +748,97 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
     Effective uid and gid is kept as root.  It means that (a)
     os.setreuid/os.setregid can be used to switch between invoking
     users and root, and (b) os.access function will return file
-    accessibility of the invoking user (beware of timing security
-    hole, though).
+    accessibility of the invoking user (beware of timing-based race
+    condition, though).
 
     The function returns True when setuid is effective: False
     otherwise (invoked directly as either root or a non-root user).
 
     All arguments are optional and meaning as follows:
 
-        realroot_ok: default False. Specify whether the script can be
-                     invoked as real root user (via sudo by root).
+        realroot_ok:
 
-        nonsudo_ok: default False. Specify whether the script can be
-                    invoked by root user without sudo.
-                    When enabled, misconfiguration might open security
-                    holes to ordinary users; be extremely careful.
+            default False. Specify whether the script can be
+            invoked as real root user (via sudo by root).
 
-        sudo_wrap: default False. If set to True, the script will try
-                   to invoke itself via sudo(1), when root privilege
-                   is not available.  Sudo must be configured
-                   appropriately so that required ordinary users can
-                   invoke this script (by its full-path with python
-                   command).
+        nonsudo_ok:
 
-                   A special command-line argument is used to
-                   communicate between invoking/self-invoked scripts,
-                   thus the function MUST be called before any
-                   command-line processing (e.g. argparse).
+            default False. Specify whether the script can be invoked
+            by root user without sudo.  When enabled, misconfiguration
+            might open security holes to ordinary users; be extremely
+            careful.
 
-        use_shebang: default False; only meaningful when
-                     sudo_wrap=True.  If set to True, the module will
-                     directly invoke the script itself as an
-                     executable, expecting '#!' feature of the
-                     underlying operating system to work.
+        sudo_wrap:
 
-                     Use of this flag requires changes to the sudo
-                     configuration.
+            default False. If set to True, the script will try to
+            invoke itself via sudo(1), when root privilege is not
+            available.  Sudo must be configured appropriately so that
+            required ordinary users can invoke this script (by its
+            full-path with python command).
 
-        python_flags: default "IR"; only meaningful when sudo_wrap=True
-                      and use_shebang=False.  A string containing
-                      one-character flags to be passed to the python
-                      interpreter called when sudo_wrap=True.
+            A special command-line argument is used to communicate
+            between invoking/self-invoked scripts, thus the function
+            MUST be called before any command-line processing
+            (e.g. argparse).
 
-                      In Python 2.7, "I" flag will be translated to
-                      combination of "-E -s" flags.
+        use_shebang:
 
-        inherit_flags: default False; only meaningful when
-                       sudo_wrap=True and use_shebang=False.  If set
-                       to True, it will pass some of the flags
-                       originally passed to the Python interpreter.
+            default False; only meaningful when sudo_wrap=True.  If
+            set to True, the module will directly invoke the script
+            itself as an executable, expecting '#!'  feature of the
+            underlying operating system to work.
 
-        pass_env: default []; list of names of environment variables
-                  which is passed the wrapped command.  Effective only
-                  with sudo_wrap=True.  Its value is encoded to
-                  special environmental variable; it exploits the fact
-                  that sudo passes all variables starts with "LC_".
-                  *Caution*: passing some system-defined variables
-                  such as IFS, LD_PRELOAD, LD_LIBRARY_PATH will lead
-                  to creation of a security hole.  This option can
-                  bypass security measures provided by sudo, if the
-                  script really tells this module to do so.  Use this
-                  feature only when it is really needed.
+            Use of this flag requires changes to the sudo
+            configuration.
 
-        accept_showcmd_opts: default False; if enabled, this function
-                             will check for the first command-line
-                             option "--show-sudo-command-line".
-                             If it exists, it shows the command line
-                             for the re-invocation and exit.
+        python_flags:
+
+            default "IR"; only meaningful when sudo_wrap=True and
+            use_shebang=False.  A string containing one-character
+            flags to be passed to the python interpreter called when
+            sudo_wrap=True.
+
+            In Python 2.7, "I" flag will be translated to combination
+            of "-E -s" flags.
+
+        inherit_flags:
+
+            default False; only meaningful when sudo_wrap=True and
+            use_shebang=False.  If set to True, it will pass some of
+            the flags originally passed to the Python interpreter.
+
+        pass_env:
+
+            default []; list of names of environment variables which
+            is passed the wrapped command.  Effective only with
+            sudo_wrap=True.  Its value is encoded to special
+            environmental variable; it exploits the fact that sudo
+            passes all variables starts with "LC_".
+
+            *Caution*: passing some system-defined variables such as
+            IFS, LD_PRELOAD, LD_LIBRARY_PATH will lead to creation of
+            a security hole.  This option can bypass security measures
+            provided by sudo, if the script really tells this module
+            to do so.  Use this feature only when it is really needed.
+
+        showcmd_opts:
+
+            default None; if a string is given, this function will
+            compare it with first command-line argument.  If it
+            matches, it shows the command line for the re-invocation
+            and exit.  If "True" is passed, it is treated as if it
+            were "--show-sudo-command-line".
+
     """
     if _SuidStatus._status:
         # already run
         return _SuidStatus._status.is_suid
 
-    if accept_showcmd_opts:
+    if showcmd_opts:
         show_sudo_command_line(
             use_shebang=use_shebang, python_flags=python_flags,
-            inherit_flags=inherit_flags, pass_env=pass_env, check=True)
+            inherit_flags=inherit_flags, pass_env=pass_env,
+            check=showcmd_opts)
 
     uid, euid, suid = os.getresuid()
     wrapped_invocation_info = _detect_wrapped_reinvoked()

@@ -636,7 +636,7 @@ sub called_via_sudo() {
 	return undef unless $has_root;
 
 	# We're running in root. We must be more careful.
-	
+
 	my $s1 = $s->{p_stat} or die;
 	my $found = 0;
 
@@ -746,6 +746,44 @@ sub _wrap_invoke_sudo ( % ) {
     exit(1)
 }
 
+# Returns the commandline pattern which is used for reinvocation via sudo.
+#
+# Returned value is a pair of strings to be displayed: the first is
+# the sudo command line, and the second is a possible template for
+# the sudoers configuration.
+#
+# Parameters use_shebang, python_flags, inherit_flags, pass_env are
+# as same as suid_emulate().
+#
+# The parameter user_str is used in the position of the invoking
+# user name in sudoers.
+sub compute_sudo_commane_line_patterns( % ) {
+    my %options = _merge_options {
+	use_shebang => 0,
+	perl_flags => 'T', inherit_flags => 0,
+	pass_env => [],
+	user_str => ".user."
+    }, @_;
+
+    my ($cmd, $cmdline) = _construct_wrap_invoke_cmdline
+      ( use_shebang => $options{use_shebang},
+	perl_flags => $options{perl_flags},
+	inherit_flags => $options{inherit_flags},
+	wrapkey => "" );
+
+    my $user_str = $options{user_str};
+    my $cmdstr = join(" ", @$cmdline);
+
+    my @cmdline_sudoers = @$cmdline;
+    map { s/([ =*\\])/\\$1/g } @cmdline_sudoers;
+    shift @cmdline_sudoers;
+
+    my $sudoers = join(" ", @cmdline_sudoers);
+    $sudoers = "${user_str} ALL = (root:root) NOPASSWD: ${sudoers}*";
+
+    return $cmdstr, $sudoers;
+}
+
 # Show the commandline pattern which is used for reinvocation via sudo.
 #
 # Output is sent to stderr.
@@ -753,13 +791,14 @@ sub _wrap_invoke_sudo ( % ) {
 # Parameters use_shebang, ruby_flags, inherit_flags, pass_env are
 # as same as suid_emulate().
 #
-# If check is True, it will check the first command line parameter.
-# if it is "--show-sudo-command-line", it will show the information
-# and terminate the self process automatically.
-# Otherwise, do nothing.
+#    If check is a truth value, it will be compared with the first
+#    command line parameter.  if these are equal, it will show the
+#    information and terminate the self process automatically.
+#    Otherwise, do nothing.  A special value "1" is treated as
+#    "--show-sudo-command-line".
 #
 # If script want to use own logics or conditions for showing this
-# information, call this function with check:false (default).
+# information, call this function with check => 0 (default).
 sub show_sudo_command_line( % ) {
     my %options = _merge_options {
 	use_shebang => 0,
@@ -768,23 +807,17 @@ sub show_sudo_command_line( % ) {
 	check => 0
     }, @_;
 
-    if ($options{check}) {
-	return if scalar @ARGV < 1 or $ARGV[0] ne '--show-sudo-command-line';
+    my $check = $options{check};
+    $check = '--show-sudo-command-line' if $check eq '1';
+    if ($check) {
+	return if scalar @ARGV < 1 or $ARGV[0] ne $check;
     }
 
-    my ($cmd, $cmdline) = _construct_wrap_invoke_cmdline
+    my ($cmdstr, $sudoers) = compute_sudo_commane_line_patterns
       ( use_shebang => $options{use_shebang},
 	perl_flags => $options{perl_flags},
 	inherit_flags => $options{inherit_flags},
-	wrapkey => "" );
-
-    my $cmdstr = join(" ", @$cmdline);
-
-    my @cmdline_sudoers = @$cmdline;
-    map { s/([ =*\\])/\\$1/g } @cmdline_sudoers;
-    shift @cmdline_sudoers;
-
-    my $sudoers = join(" ", @cmdline_sudoers);
+	user_str => ".user." );
 
     printf STDERR ('
 This command uses sudo internally. It will invoke itself as:
@@ -793,7 +826,7 @@ This command uses sudo internally. It will invoke itself as:
 
 Corresponding sudoers line will be as follows:
 
-.user. ALL = (root:root) NOPASSWD: %s*
+%s
 
 ".user." should be replaced either by username or by "ALL".
 
@@ -801,7 +834,7 @@ Please check the above configuration is secure or not,
 before actually adding it to /etc/sudoers.
 ', $cmdstr, $sudoers);
 
-    if ($options{check}) {
+    if ($check) {
 	exit(2)
     }
 }
@@ -899,6 +932,14 @@ This option can bypass security measures provided by sudo, if the
 script really tells this module to do so.  Use this feature only when
 it is really needed.
 
+=item showcmd_opts:
+
+default false; if set to a string, it will be compared with the
+user-supplied first command-line parameter.  If it matches, the
+function se shows the expected command line for the re-invocation and
+exit.  If "1" is passed, it is treated as if
+"--show-sudo-command-line" were given.
+
 =back
 
 =cut
@@ -911,19 +952,19 @@ sub suid_emulate( % ) {
 	sudo_wrap => 0, use_shebang => 0,
 	  perl_flags => 'T', inherit_flags => 0,
 	  realroot_ok => 0, nonsudo_ok => 0,
-	  pass_env => [], accept_showcmd_opts => 0
+	  pass_env => [], showcmd_opts => 0
       }, @_;
 
     if ($_status) {
 	return $_status->{is_suid};
     }
 
-    if ($options{accept_showcmd_opts}) {
+    if ($options{showcmd_opts}) {
 	show_sudo_command_line(use_shebang => $options{use_shebang},
 			       perl_flags => $options{perl_flags},
 			       inherit_flags => $options{inherit_flags},
 			       pass_env => $options{pass_env},
-			       check => 1);
+			       check => $options{showcmd_opts});
     }
 
     my $wrapped_invocation_info = _detect_wrapped_reinvoked();
