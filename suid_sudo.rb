@@ -591,10 +591,8 @@ module SUID_SUDO
     return l
   end
 
-  def self._wrap_invoke_sudo(use_shebang:false,
-                             ruby_flags:"", inherit_flags:false,
-                             pass_env:[])
-
+  def self._construct_wrap_invoke_cmdline(use_shebang:false, ruby_flags:"T", inherit_flags:false,
+                                          wrapkey:nil)
     scriptname = File.absolute_path($0).untaint
     execname = _get_ruby_interpreter().untaint
     flags = []
@@ -612,21 +610,34 @@ module SUID_SUDO
       flags = _process_ruby_flags(ruby_flags, inherit_flags:inherit_flags)
     end
 
-    if ! pass_env || pass_env.length == 0
-      env_var = ""
-    else
-      env_var = _setup_passenv(pass_env)
-    end
-
     cmd = ALLOWED_SUDO_[0]
     ALLOWED_SUDO_.each { |c|
       if File.exists?(c)
         cmd = c
       end
     }
+    args = [cmd] + execname + flags + [scriptname, "----sudo_wrap=" + wrapkey]
+    return cmd, args
+  end
+
+  def self._wrap_invoke_sudo(use_shebang:false,
+                             ruby_flags:"", inherit_flags:false,
+                             pass_env:[])
+    if ! pass_env || pass_env.length == 0
+      env_var = ""
+    else
+      env_var = _setup_passenv(pass_env)
+    end
+    wrapkey = _encode_wrapper_info(env_var)
+
     dp ["ARGV", ARGV, "PID", Process::pid]
-    args = ["----sudo_wrap=" + _encode_wrapper_info(env_var)] + ARGV.map {|x| x.dup.untaint}
-    args = [cmd] + execname + flags + [scriptname]  + args
+    cmd, args = _construct_wrap_invoke_cmdline(
+           use_shebang:use_shebang,
+           ruby_flags:ruby_flags,
+           inherit_flags:inherit_flags,
+           wrapkey:wrapkey)
+
+    args = args + ARGV.map {|x| x.dup.untaint}
     dp args
     begin
       exec(*args)
@@ -634,6 +645,61 @@ module SUID_SUDO
       raise SUIDSetupError::new("could not invoke #{cmd} for wrapping: #{e.inspect}")
     end
     assert false
+  end
+
+  # Show the commandline pattern which is used for reinvocation via sudo.
+  #
+  # Output is sent to stderr.
+  #
+  # Parameters use_shebang, ruby_flags, inherit_flags, pass_env are
+  # as same as suid_emulate().
+  #
+  # If check is True, it will check the first command line parameter.
+  # if it is "--show-sudo-command-line", it will show the information
+  # and terminate the self process automatically.
+  # Otherwise, do nothing.
+  #
+  # If script want to use own logics or conditions for showing this
+  # information, call this function with check:false (default).
+  def show_sudo_command_line(use_shebang:false, ruby_flags:"T", inherit_flags:false,
+                             pass_env:[], check:false)
+    if check
+      if ARGV.length < 1 or ARGV[0] != '--show-sudo-command-line'
+        return
+      end
+    end
+
+    cmd, cmdline = _construct_wrap_invoke_cmdline(
+        use_shebang:use_shebang, ruby_flags:ruby_flags,
+        inherit_flags:inherit_flags,
+        wrapkey:'')
+
+    cmdline_sudoers = cmdline.map {|x|
+      x.gsub(/([ =*\\])/) { |s| "\\" + s }
+    }
+    cmdline_sudoers.shift
+
+    sudoers = cmdline_sudoers.join(" ")
+    cmdstr = cmdline.join(" ")
+
+    $stderr.printf('
+This command uses sudo internally. It will invoke itself as:
+
+%s...
+
+Corresponding sudoers line will be as follows:
+
+.user. ALL = (root:root) NOPASSWD: %s*
+
+".user." should be replaced either by username or by "ALL".
+
+Please check the above configuration is secure or not,
+before actually adding it to /etc/sudoers.
+', cmdstr, sudoers)
+
+    if check
+      exit(2)
+    end
   end
 
   ### Detect and initialize sudo'ed and suid'ed environment
@@ -705,7 +771,7 @@ module SUID_SUDO
   #
   #  default "T"; only meaningful when sudo_wrap=true and
   #  use_shebang=false.  A string containing one-character flags to be
-  #  passed to the python interpreter called when sudo_wrap=True.
+  #  passed to the ruby interpreter called when sudo_wrap=True.
   #
   # [inherit_flags]
   #
@@ -720,17 +786,33 @@ module SUID_SUDO
   #  sudo_wrap=True.  Its value is encoded to special environmental
   #  variable; it cheats the fact that sudo passes all variables
   #  starts with "LC_".
-
+  #
   #  *Caution*: passing some system-defined variables such as IFS,
   #  LD_PRELOAD, LD_LIBRARY_PATH will lead to creation of a security
   #  hole.  This option can bypass security measures provided by sudo,
   #  if the script really tells this module to do so.  Use this
   #  feature only when it is really needed.
   #
+  # [accept_showcmd_opts]
+  #
+  # default false: if enabled, this function will check for the first
+  # command-line option "--show-sudo-command-line".  If it exists, it
+  # shows the command line for the re-invocation and exit.
+
   def suid_emulate(realroot_ok:false, nonsudo_ok:false,
                    sudo_wrap:false, use_shebang:false,
                    ruby_flags:"T", inherit_flags:false,
-                   pass_env:[])
+                   pass_env:[], accept_showcmd_opts:false)
+    if SUID_STATUS_::_status
+      return SUID_STATUS_::_status.is_suid
+    end
+
+    if accept_showcmd_opts
+      show_sudo_command_line(
+        use_shebang:use_shebang, ruby_flags:ruby_flags,
+        inherit_flags:inherit_flags, pass_env:pass_env, check:true)
+    end
+
     uid = Process::Sys::getuid
     euid = Process::Sys::geteuid
     wrapped_invocation_info = _detect_wrapped_reinvoked()
@@ -738,10 +820,6 @@ module SUID_SUDO
 
     if (! is_sudoed && wrapped_invocation_info)
       raise SUIDSetupError::new("bad wrapper key found")
-    end
-
-    if SUID_STATUS_::_status
-      return SUID_STATUS_::_status.is_suid
     end
 
     if (uid != euid)
@@ -1178,7 +1256,7 @@ module SUID_SUDO
   module_function :run_in_subprocess, :suid_emulate,
                   :temporarily_as_root, :temporarily_as_user,
                   :temporarily_as_real_root, :drop_privileges_forever,
-                  :spawn_in_privilege
+                  :spawn_in_privilege, :show_sudo_command_line
 
   require 'forwardable'
 

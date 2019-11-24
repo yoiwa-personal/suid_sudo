@@ -674,12 +674,14 @@ sub _process_perl_flags( $$ ) {
     return @ret;
 }
 
-sub _wrap_invoke_sudo ( % ) {
+sub _construct_wrap_invoke_cmdline( % ) {
     my %options = _merge_options {
 	use_shebang => 0,
 	perl_flags => 'T', inherit_flags => 0,
-	pass_env => []
+	pass_env => [], wrapkey => undef
     }, @_;
+
+    croak unless defined $options{wrapkey};
 
     my $scriptname = _untaint(File::Spec->rel2abs($PROGRAM_NAME));
     #my $execname = $EXECUTABLE_NAME;
@@ -702,14 +704,6 @@ sub _wrap_invoke_sudo ( % ) {
         @flags = _process_perl_flags($options{perl_flags}, $options{inherit_flags})
     }
 
-    my $envp;
-    my $pass_env = $options{pass_env};
-    if (! $pass_env or scalar @$pass_env == 0) {
-	$envp = "";
-    } else {
-	$envp = _setup_passenv($pass_env);
-    }
-
     my $cmd = $ALLOWED_SUDO_[0];
     for my $c (@ALLOWED_SUDO_) {
 	if (-f $c) {
@@ -717,12 +711,99 @@ sub _wrap_invoke_sudo ( % ) {
 	    last;
 	}
     }
+    my $args;
+    $args = [$cmd, @execname, @flags, $scriptname, ("----sudo_wrap=" . $options{wrapkey})];
+    return ($cmd, $args);
+}
+
+sub _wrap_invoke_sudo ( % ) {
+    my %options = _merge_options {
+	use_shebang => 0,
+	perl_flags => 'T', inherit_flags => 0,
+	pass_env => []
+    }, @_;
+
+    my $envp;
+    my $pass_env = $options{pass_env};
+    if (! $pass_env or scalar @$pass_env == 0) {
+	$envp = "";
+    } else {
+	$envp = _setup_passenv($pass_env);
+    }
+    my $wrapkey = _encode_wrapper_info($envp);
+
+    my ($cmd, $args) = _construct_wrap_invoke_cmdline
+      ( use_shebang => $options{use_shebang},
+	perl_flags => $options{perl_flags},
+	inherit_flags => $options{inherit_flags},
+	wrapkey => $wrapkey );
+
     my @args;
-    @args = ("----sudo_wrap=" . _encode_wrapper_info($envp), map { _untaint $_ } @ARGV);
-    @args = ($cmd, @execname, @flags, $scriptname, @args);
+    @args = (@$args, map { _untaint $_ } @ARGV);
+
     exec(@args);
     die SUIDSetupError("could not invoke $cmd for wrapping: $!");
     exit(1)
+}
+
+# Show the commandline pattern which is used for reinvocation via sudo.
+#
+# Output is sent to stderr.
+#
+# Parameters use_shebang, ruby_flags, inherit_flags, pass_env are
+# as same as suid_emulate().
+#
+# If check is True, it will check the first command line parameter.
+# if it is "--show-sudo-command-line", it will show the information
+# and terminate the self process automatically.
+# Otherwise, do nothing.
+#
+# If script want to use own logics or conditions for showing this
+# information, call this function with check:false (default).
+sub show_sudo_command_line( % ) {
+    my %options = _merge_options {
+	use_shebang => 0,
+	perl_flags => 'T', inherit_flags => 0,
+	pass_env => [],
+	check => 0
+    }, @_;
+
+    if ($options{check}) {
+	return if scalar @ARGV < 1 or $ARGV[0] ne '--show-sudo-command-line';
+    }
+
+    my ($cmd, $cmdline) = _construct_wrap_invoke_cmdline
+      ( use_shebang => $options{use_shebang},
+	perl_flags => $options{perl_flags},
+	inherit_flags => $options{inherit_flags},
+	wrapkey => "" );
+
+    my $cmdstr = join(" ", @$cmdline);
+
+    my @cmdline_sudoers = @$cmdline;
+    map { s/([ =*\\])/\\$1/g } @cmdline_sudoers;
+    shift @cmdline_sudoers;
+
+    my $sudoers = join(" ", @cmdline_sudoers);
+
+    printf STDERR ('
+This command uses sudo internally. It will invoke itself as:
+
+%s...
+
+Corresponding sudoers line will be as follows:
+
+.user. ALL = (root:root) NOPASSWD: %s*
+
+".user." should be replaced either by username or by "ALL".
+
+Please check the above configuration is secure or not,
+before actually adding it to /etc/sudoers.
+', $cmdstr, $sudoers);
+
+    if ($options{check}) {
+	exit(2)
+    }
 }
 
 ### Detect and initialize sudo'ed and suid'ed environment
@@ -830,8 +911,20 @@ sub suid_emulate( % ) {
 	sudo_wrap => 0, use_shebang => 0,
 	  perl_flags => 'T', inherit_flags => 0,
 	  realroot_ok => 0, nonsudo_ok => 0,
-	  pass_env => []
+	  pass_env => [], accept_showcmd_opts => 0
       }, @_;
+
+    if ($_status) {
+	return $_status->{is_suid};
+    }
+
+    if ($options{accept_showcmd_opts}) {
+	show_sudo_command_line(use_shebang => $options{use_shebang},
+			       perl_flags => $options{perl_flags},
+			       inherit_flags => $options{inherit_flags},
+			       pass_env => $options{pass_env},
+			       check => 1);
+    }
 
     my $wrapped_invocation_info = _detect_wrapped_reinvoked();
     my $is_sudoed = called_via_sudo();
@@ -839,10 +932,6 @@ sub suid_emulate( % ) {
     unless ($is_sudoed || ! $wrapped_invocation_info) {
 	die;
     }
-
-    #if _status
-    #  return _status.is_suid
-    #end
 
     if ($uid != $euid) {
 	_make_status_now(1, 0);

@@ -12,7 +12,9 @@ sub print_ids () {
     print Dumper([$<, $>, $(, $)]);
 }
 
-print "suid_emulate -> ", suid_emulate(sudo_wrap => 1, use_shebang => 1, pass_env => [qw(TESTVAR)]), "\n";
+my $r = suid_emulate(sudo_wrap => 1, use_shebang => 1, pass_env => [qw(TESTVAR)],
+		     accept_showcmd_opts => 1);
+print "suid_emulate -> $r\n";
 
 my $cmd = $ARGV[0] || "0";
 

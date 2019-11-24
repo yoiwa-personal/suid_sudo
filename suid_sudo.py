@@ -640,6 +640,23 @@ def _wrap_invoke_sudo(use_shebang=False, python_flags="IR", inherit_flags=False,
     assert False
 
 def show_sudo_command_line(use_shebang, python_flags, inherit_flags, pass_env, check=False):
+    """Show the commandline pattern which is used for reinvocation via sudo.
+
+    Output is sent to stderr.
+
+    Parameters use_shebang, python_flags, inherit_flags, pass_env are
+    as same as suid_emulate().
+
+    If check is True, it will check the first command line parameter.
+    if it is "--show-sudo-command-line", it will show the information
+    and terminate the self process automatically.
+    Otherwise, do nothing.
+
+    If script want to use own logics or conditions for showing this
+    information, call this function with check=False (default).
+
+    """
+
     if check:
         if len(sys.argv) <= 1 or sys.argv[1] != '--show-sudo-command-line':
             return
