@@ -101,13 +101,12 @@ Please read F<README.md> for security details.
 =cut
 
 use v5.24;
-package SUID_SUDO;
+package SUID_SUDO v0.99.2; # must match with VERSION tag.
 
 ### Exceptions
 
 # Runtime error happens during processing by suid_sudo
-package SUID_SUDO::SUIDHandlingError;
-{
+package SUID_SUDO::SUIDHandlingError {
     use overload ( '""' => \&to_str );
 
     sub new( $$ ) {
@@ -136,8 +135,7 @@ package SUID_SUDO::SUIDHandlingError;
 }
 
 # Runtime error happens during initial setup by suid_sudo
-package SUID_SUDO::SUIDSetupError;
-{
+package SUID_SUDO::SUIDSetupError {
     our @ISA = ('SUID_SUDO::SUIDHandlingError');
 
     sub new( $$ ) {
@@ -152,8 +150,7 @@ package SUID_SUDO::SUIDSetupError;
 }
 
 # Runtime error during changing privileges
-package SUID_SUDO::SUIDPrivilegesSettingError;
-{
+package SUID_SUDO::SUIDPrivilegesSettingError {
     our @ISA = ('SUID_SUDO::SUIDHandlingError');
 
     sub new( $$ ) {
@@ -168,8 +165,7 @@ package SUID_SUDO::SUIDPrivilegesSettingError;
 }
 
 # Runtime error happens during handling of subprocesses
-package SUID_SUDO::SUIDSubprocessError;
-{
+package SUID_SUDO::SUIDSubprocessError {
     our @ISA = ('SUID_SUDO::SUIDHandlingError');
 
     sub new( $$ ) {
@@ -182,8 +178,6 @@ package SUID_SUDO::SUIDSubprocessError;
 	SUID_SUDO::SUIDSubprocessError->new(@_);
     }
 }
-
-package SUID_SUDO;
 
 use Exporter 'import';
 our @EXPORT_OK = qw(suid_emulate
@@ -683,14 +677,17 @@ sub _construct_wrap_invoke_cmdline( % ) {
 
     croak unless defined $options{wrapkey};
 
+    die SUIDSetupError("error: can not reinvoke script: not running a script?")
+      if (not $PROGRAM_NAME or $PROGRAM_NAME eq "-e");
     my $scriptname = _untaint(File::Spec->rel2abs($PROGRAM_NAME));
+
     #my $execname = $EXECUTABLE_NAME;
     use Config;
     my $execname = $Config{perlpath};
 
-    die SUIDSetupError("error: could not reinvoke script: could not found myself")
+    die SUIDSetupError("error: can not reinvoke script: could not found myself")
       unless -f $scriptname;
-    die SUIDSetupError("error: could not reinvoke script: interpreter not found")
+    die SUIDSetupError("error: can not reinvoke script: interpreter not found")
       unless -x $execname;
 
     my @execname;
@@ -788,7 +785,7 @@ sub compute_sudo_commane_line_patterns( % ) {
 #
 # Output is sent to stderr.
 #
-# Parameters use_shebang, ruby_flags, inherit_flags, pass_env are
+# Parameters use_shebang, perl_flags, inherit_flags, pass_env are
 # as same as suid_emulate().
 #
 #    If check is a truth value, it will be compared with the first
