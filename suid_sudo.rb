@@ -443,7 +443,7 @@ module SUID_SUDO
   def self._decode_wrapped_info(v, uid, gid, pass_env)
     dp ["_decode_wrapped_info", v, uid, gid, pass_env]
     if v.length != 4 or Process::ppid.to_s != v[0] or uid.to_s != v[1] or gid.to_s != v[2]
-      raise SUIDSetupError::new("error: wrapped invocation key mismatch")
+      raise SUIDSetupError::new("wrapped invocation key mismatch")
     end
     return _decode_passenv(v[3], pass_env)
   end
@@ -457,7 +457,7 @@ module SUID_SUDO
     out = []
     pass_env.each { |k|
       if k.include?('=')
-          raise ArgumentError("names in pass_env should not contain =")
+          raise ArgumentError.new("names in pass_env should not contain =")
       end
       v = ENV[k]
       if v == nil
@@ -593,14 +593,17 @@ module SUID_SUDO
 
   def self._construct_wrap_invoke_cmdline(use_shebang:false, ruby_flags:"T", inherit_flags:false,
                                           wrapkey:nil)
+    if not $0 or $0 == "-e"
+      raise SUIDSetupError.new("can not reinvoke script: not running a script?")
+    end
     scriptname = File.absolute_path($0).untaint
     execname = _get_ruby_interpreter().untaint
     flags = []
     if not File.exists?(scriptname)
-      raise RuntimeError("error: could not reinvoke script: could not found myself")
+      raise SUIDSetupError.new("can not reinvoke script: could not found myself")
     end
     if not File.exists?(execname)
-      raise RuntimeError("error: could not reinvoke script: interpreter not found")
+      raise SUIDSetupError.new("can not reinvoke script: interpreter not found")
     end
     if use_shebang
       execname = []
@@ -736,11 +739,11 @@ before actually adding it to /etc/sudoers.
     type ||= ename
     valstr = ENV.delete(ename) {
       # not found
-      raise SUIDSetupError::new("error: sudo did not set #{type} information")
+      raise SUIDSetupError::new("sudo did not set #{type} information")
     }
     valint = valstr.to_i
     if valint.to_s != valstr
-      raise SUIDSetupError::new("error: sudo set malformed #{type} information")
+      raise SUIDSetupError::new("sudo set malformed #{type} information")
     end
     return valint
   end
@@ -859,7 +862,7 @@ before actually adding it to /etc/sudoers.
     if euid != 0
       if sudo_wrap
         if wrapped_invocation_info
-          raise SUIDSetupError::new("error: detected wrapping loop")
+          raise SUIDSetupError::new("detected wrapping loop")
         end
         _wrap_invoke_sudo(use_shebang:use_shebang,
                           ruby_flags:ruby_flags, inherit_flags:inherit_flags,
@@ -891,7 +894,7 @@ before actually adding it to /etc/sudoers.
     end
 
     sudo_username = ENV.delete("SUDO_USER") {
-      raise SUIDSetupError::new("error: sudo did not set username information")
+      raise SUIDSetupError::new("sudo did not set username information")
     }
     sudo_username = sudo_username.dup.untaint
     ENV.delete("SUDO_COMMAND")
@@ -900,10 +903,10 @@ before actually adding it to /etc/sudoers.
     begin
       pwdent = Etc::getpwnam(sudo_username)
     rescue ArgumentError
-      raise SUIDSetupError::new("error: bad username information from sudo: no corresponding user")
+      raise SUIDSetupError::new("bad username information from sudo: no corresponding user")
     end
     if (pwdent.uid != sudo_uid)
-      raise SUIDSetupError::new("error: inconsistent user information from sudo: why?")
+      raise SUIDSetupError::new("inconsistent user information from sudo: why?")
     end
     Process::initgroups(sudo_username, sudo_gid)
 
@@ -914,10 +917,10 @@ before actually adding it to /etc/sudoers.
     Process::Sys::setreuid(sudo_uid, 0)
 
     if (Process.uid != sudo_uid)
-      raise SUIDSetupError::new("error: setresuid failed")
+      raise SUIDSetupError::new("setresuid failed")
     end
     if (Process.gid != sudo_gid)
-      raise SUIDSetupError::new("error: setresgid failed")
+      raise SUIDSetupError::new("setresgid failed")
     end
     return true
   end
@@ -1143,7 +1146,7 @@ before actually adding it to /etc/sudoers.
   def run_in_subprocess
 
     require 'yaml'
-    raise ValueError("no block provided") unless block_given?
+    raise ValueError.new("no block provided") unless block_given?
 
     pid, ret, rete, mark = nil
     IO.pipe(binmode: true) do |r, w|
@@ -1267,7 +1270,7 @@ before actually adding it to /etc/sudoers.
           succeeded = stat.success?
           if exception_mode && ! succeeded
             stat_s = stat.to_s.gsub(/^pid \d+ /, "")
-            raise RuntimeError.new("Command failed with #{stat_s}: #{args.to_s}")
+            raise SUIDSubprocessError.new("Command failed with #{stat_s}: #{args.to_s}")
           end
           return succeeded
         when :spawn
