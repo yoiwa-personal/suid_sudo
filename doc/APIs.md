@@ -125,6 +125,24 @@ All arguments are optional and these meanings are as follows:
    flags originally passed to the Python/Ruby/Perl interpreter.
    It's always safer to specify explicitly using *_flags option.
 
+ * env_pass: default []; list of names of environment variables which
+   passed the wrapped command.  Effective only with sudo_wrap=True.
+   Its value is encoded to special environmental variable; it exploits
+   the fact that sudo passes all variables starts with "LC_".
+
+   *Caution*: passing some system-defined variables such as IFS,
+   LD_PRELOAD, LD_LIBRARY_PATH will lead to creation of a security
+   hole.  This option can bypass security measures provided by sudo,
+   if the script really tells this module to do so.  Use this feature
+   only when it is really needed.
+
+ * showcmd_opts:
+
+   default None; if a string is given, this function will compare it
+   with first command-line argument.  If it matches, it shows the
+   command line for the re-invocation and exit.  If `True` (`1` in
+   Perl) is passed, it is treated as `"--show-sudo-command-line"`.
+
 ## Privilege Switching Functions
 
 There are four functions performing switching between privileges.
@@ -365,6 +383,32 @@ In Perl, run_in_subprocess can be similarly used as Ruby.
 All exceptions are propagated as a simple string.
 Current implementation uses JSON (JSON::PP) for return value
 communication in Perl.
+
+## Misc functions
+
+Functions in this section are not exported; these should be called via
+explicit module attribution.
+
+### show_sudo_command_line
+
+It displays how the script will be re-invoked via sudo, to standard
+error stream (usually a console).
+
+Parameters `use_shebang`, `{python|ruby|perl}_flags`, `inherit_flags`,
+`pass_env` are as same as `suid_emulate()`.
+
+### compute_sudo_commane_line_patterns
+
+It returns strings representing the command-line patterns for
+re-invocation.  It returns a pair; the first element is a descriptive
+string for re-invocation pattern, and the second element is one
+used as an entry in `sudoers` file.
+
+Parameters `use_shebang`, `{python|ruby|perl}_flags`, `inherit_flags`,
+`pass_env` are as same as `suid_emulate()`.
+
+A string given in `user_str` parameter is used for users specification
+in `sudoers` patterns.
 
 ## Defined Exceptions
 
