@@ -11,5 +11,5 @@ Gem::Specification.new do |s|
   s.files       = ["suid_sudo.rb", "README.md", "doc/APIs.md"]
   s.require_paths = ['.']
   s.homepage    = 'https://github.com/yoiwa-persona/suid_sudo/'
-  s.metadata    = { "source_code_uri" => "https://github.com/yoiwa-persona/suid_sudo/" }
+  s.metadata    = { "source_code_uri" => "https://github.com/yoiwa-personal/suid_sudo/" }
 end
