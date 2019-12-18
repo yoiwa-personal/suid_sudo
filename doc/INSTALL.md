@@ -70,11 +70,19 @@ path, which will lead to root exploits!*
 
    before calling `use` for any modules.
 
+You can also consider "zip-based" solutions described below.
+
 ### For single-file programs
 
-If you're using Python, use of `zipapp` module is highly recommended
-for this purpose.
+If you're using Python, use of `zipapp` built-in module is highly
+recommended for this purpose.
 
-Embedding the module to a main script is not advised (as it is too
-long), but if the script really needs to be a single file, please
-clearly mark the copied part of this module.
+For Ruby and Perl, embedding the module to a main script is not 
+advised (as it is too long), but if you really need to do so,
+please clearly mark the copied part of this module.
+
+Alternatively, you can try 
+[ziprubyapp](https://github.com/yoiwa-personal/ziprubyapp) and
+[zipperlapp](https://github.com/yoiwa-personal/zipperlapp),
+which we have implemented as an equivalent of Python's zipapp for
+Ruby and Perl.
