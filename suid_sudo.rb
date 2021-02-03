@@ -44,7 +44,7 @@ Inappropriate use of this module will open up a huge security hole
 to ordinary users.  In the past obsolete "suidperl" feature of the
 Perl language, the special language interpreter takes care of
 various possible security pitfalls (e.g. limiting use of
-$ENV{PATH}).  This module simply, on the contrary, simply relies
+$ENV{PATH}).  This module, on the contrary, simply relies
 on the "sudo" generic wrapper for the most of the security
 features.  In other words, this module only "drops" the privilege
 given by sudo, not "acquires" any.  However, still there are
@@ -61,7 +61,7 @@ That means:
   with the full pathspec, and
 
 * the script must be careful about any environment variables and
-  any other environmental properties which will affect Python,
+  any other environmental properties which will affect Ruby,
   the script, and any subcommands invoked from it.
 
 Please read README.md for security details.
@@ -656,7 +656,7 @@ module SUID_SUDO
   # the sudo command line, and the second is a possible template for
   # the sudoers configuration.
   #
-  # Parameters use_shebang, python_flags, inherit_flags, pass_env are
+  # Parameters use_shebang, ruby_flags, inherit_flags, pass_env are
   # as same as suid_emulate().
   #
   # The parameter user_str is used in the position of the invoking
@@ -783,7 +783,7 @@ before actually adding it to /etc/sudoers.
   #  default false. If set to true, the script will try to invoke
   #  itself via sudo(1), when root privilege is not available.  Sudo
   #  must be configured appropriately so that required ordinary users
-  #  can invoke this script (by its full-path with python command).
+  #  can invoke this script (by its full-path with ruby command).
   #
   #  A special command-line argument is used to communicate between
   #  invoking/self-invoked scripts, thus the function MUST be called

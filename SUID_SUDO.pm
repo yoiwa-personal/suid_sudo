@@ -749,7 +749,7 @@ sub _wrap_invoke_sudo ( % ) {
 # the sudo command line, and the second is a possible template for
 # the sudoers configuration.
 #
-# Parameters use_shebang, python_flags, inherit_flags, pass_env are
+# Parameters use_shebang, perl_flags, inherit_flags, pass_env are
 # as same as suid_emulate().
 #
 # The parameter user_str is used in the position of the invoking
@@ -889,7 +889,7 @@ security holes to ordinary users; be extremely careful.
 default false. If set to true, the script will try to invoke
 itself via sudo(1), when root privilege is not available.  Sudo
 must be configured appropriately so that required ordinary users
-can invoke this script (by its full-path with python command).
+can invoke this script (by its full-path with perl command).
 
 A special command-line argument is used to communicate between
 invoking/self-invoked scripts, thus the function MUST be called
@@ -904,11 +904,11 @@ to work.
 
 Use of this flag requires changes to the sudo configuration.
 
-=item ruby_flags:
+=item perl_flags:
 
 default "T"; only meaningful when sudo_wrap is true and use_shebang is
 false.  A string containing one-character flags to be passed to the
-python interpreter called when sudo_wrap=True.
+Perl interpreter called when sudo_wrap=True.
 
 =item inherit_flags:
 

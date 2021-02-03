@@ -6,12 +6,12 @@ https://github.com/yoiwa-personal/suid_sudo/
 
 ## Overview
 
-This module enables Python/Ruby scripts to perform most of its
+This module enables Python/Ruby/Perl scripts to perform most of its
 works in the invoking user's non-root privilege, while employing
 root's power for a part of its job.
 
-In Unix-like systems, this kind of operation is achievable via
-"setuid" feature for the binary executables; however, there are
+In Unix-like systems, this kind of operation is possible via
+"setuid" feature for binary executables; however, there are
 operating systems which ignores "setuid" for interpreted scripts
 (e.g. Python, Ruby or Perl) for well-known security reasons.
 This module emulates the "setuid" feature in cooperation with
@@ -36,7 +36,7 @@ Perl 5.24.1 or later is required.
 
 Unix-like environment has a feature of "setuid" execution from long
 ago, allowing ordinary users to start a command which are to be run
-with a higher privilege.  Such higher privileged commands knows the ID
+with a higher privilege.  Such higher-privileged commands knows the ID
 of the invoking user told from the operating system, and be able to
 perform a "user-dependent" operation.  For example, "passwd" command
 invoked by an ordinary user can only change the password of that user;
@@ -65,7 +65,7 @@ However, the manual did not tell "how" to do that.  In fact, the
 scripts and other tools, but not well-powered to write a tool which
 changes actions based on the invoking user's difference.
 
-This is why the module is implemented.
+This is why this module is implemented.
 
 ## SECURITY WARNING
 

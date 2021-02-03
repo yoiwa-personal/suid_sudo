@@ -230,9 +230,9 @@ possibly-dangerous operation (e.g. eval or import).
 After calling this, the process can not call `temporarily_as_root()`
 or other similar functions to revert the privileged status anymore.
 Using this as an context manager (Python) / with a block argument
-(Ruby) is also meaningless. If really needed, consider using `fork()` or
-`{call/run}_in_subprocess()` described below to separate the
-unprivileged operations to a child process.
+(Ruby/Perl) is also meaningless. If really needed, consider using
+`fork()` or `{call/run}_in_subprocess()` described below to separate
+the unprivileged operations to a child process.
 
 ## Calling an External Program
 
@@ -359,7 +359,7 @@ or
         drop_privileges_forever()
         return what_to_do(...)
 
-Current implementation uses safe subset of Pickle bytecode
+Current implementation uses a safe subset of Pickle bytecode
 for return value communication in Python.
 
 ### run_in_subprocess (for Ruby)
@@ -374,20 +374,20 @@ write:
         what_to_do(...)
     }
 
-Current implementation uses YAML.safe_load for return value
+Current implementation uses `YAML.safe_load` for return value
 communication in Ruby.
 
 ### run_in_subprocess (for Perl)
 
 In Perl, run_in_subprocess can be similarly used as Ruby.
 All exceptions are propagated as a simple string.
-Current implementation uses JSON (JSON::PP) for return value
+Current implementation uses `JSON` (`JSON::PP`) for return value
 communication in Perl.
 
 ## Misc functions
 
 Functions in this section are not exported; these should be called via
-explicit module attribution.
+an explicit module reference.
 
 ### show_sudo_command_line
 
@@ -435,8 +435,8 @@ Failure on dropping privileges (including reverting to the lower
 privileges after high-privilege code is run) is really
 security-critical.  Such an event is quite unlikely to happen in usual
 cases, but once happened and if improperly handled, it will cause
-dangerous security issue: some code to be run in higher-than-expected
-privileges!
+dangerous security issue: some code to be run in privileges higher
+than expected.
 
 To mitigate this, for an extra caution, such failure is treated not
 like a usual exception, but like a call to `exit()`; its event will
@@ -473,7 +473,7 @@ In Perl, a blessed object defined in SUID_SUDO:: package hierarchy
 will be thrown (by `die`) when any error has occurred.  See `perlfunc`
 manual page for details on how to handle these in an object-oriented
 way.  `SUIDPrivilegesSettingFatalError` is not provided in Perl, as
-exception handling construct of Perl is very simple.
+exception handling constructs of Perl are very simple.
 
 ## Reference
 

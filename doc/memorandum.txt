@@ -100,7 +100,7 @@ of some simple attack stories to this and implemented countermeasures:
 
  - Hardlinks to the system-provided sudo in other locations are
    detected by the module and rejected; furthermore, creating a
-   hardlink of setuid binary by non-owner is rejected by Linux 3.6+ by
+   hardlink of setuid binary by non-owner is rejected on Linux 3.6+ by
    default.
 
  - If a symbolic link to the system-provided sudo is invoked, the link
@@ -109,7 +109,7 @@ of some simple attack stories to this and implemented countermeasures:
    mechanism for hardlinks will be triggered.
 
  - Obviously, copying the system sudo binary by ordinary users will
-   not work (it loses the setuid power).  Also obviously, new
+   not work (the copy loses the setuid power).  Also obviously, new
    instances of sudo cannot be installed Without root privilege.
 
 However, there are still many possible misconfigurations or paths
@@ -206,7 +206,7 @@ from the such imitations created by the symbolic links, and rejects
 them to be run by root.  If not, it's the fault of sudoers
 configuration, not this module.
 
-In other word, if some attack to the root privilege is possible via
+In other words, if some attack to the root privilege is possible via
 "sudo_wrap" feature, it can also be done directly by the user.
 
 Another problem might be caused by external module dependencies.  If

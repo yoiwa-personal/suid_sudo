@@ -43,7 +43,7 @@ SECURITY WARNING:
     to ordinary users.  In the past obsolete "suidperl" feature of the
     Perl language, the special language interpreter takes care of
     various possible security pitfalls (e.g. limiting use of
-    $ENV{PATH}).  This module simply, on the contrary, simply relies
+    $ENV{PATH}).  This module, on the contrary, simply relies
     on the "sudo" generic wrapper for the most of the security
     features.  In other words, this module only "drops" the privilege
     given by sudo, not "acquires" any.  However, still there are
