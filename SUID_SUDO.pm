@@ -1028,6 +1028,7 @@ sub suid_emulate( % ) {
     #Process::initgroups(sudo_username, sudo_gid);
     my $groups = getgrouplist($sudo_username, $sudo_gid);
     #print "$groups\n";
+    $! = 0; # errors are not cleared in setregid below
     ($GID, $EGID) = ($sudo_gid, "0 $groups");
     if ($! or $GID + 0 != $sudo_gid) {
 	die SUIDSetupError("error: setresgid failed");
