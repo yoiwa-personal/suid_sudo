@@ -1016,8 +1016,6 @@ sub suid_emulate( % ) {
     unless ($sudo_username) {
 	die SUIDSetupError("error: sudo did not set username information");
     }
-    delete $ENV{SUDO_COMMAND};
-    delete $ENV{MAIL}; # not worth to simulate
 
     my $pwdent = User::pwent::getpwnam($sudo_username) or
       die SUIDSetupError("error: bad username information from sudo: no corresponding user");
@@ -1025,6 +1023,9 @@ sub suid_emulate( % ) {
     if ($pwdent->uid != $sudo_uid) {
 	die SUIDSetupError("error: inconsistent user information from sudo: why?");
     }
+    delete $ENV{SUDO_COMMAND};
+    delete $ENV{MAIL}; # not worth to simulate
+
     #Process::initgroups(sudo_username, sudo_gid);
     my $groups = getgrouplist($sudo_username, $sudo_gid);
     #print "$groups\n";
@@ -1059,19 +1060,20 @@ sub _set_ids($$$) {
 
     my ($to_u, $from_u, $to_g, $from_g, $groups);
     $groups = $_status->{groups};
-    my $pwent = $_status->{user_pwent};
+    my $pwent;
     if ($to_root) {
 	($to_u, $from_u) = $_status->{euid}, $_status->{uid};
  	($to_g, $from_g) = $_status->{egid}, $_status->{gid};
+	$pwent = $_status->{root_pwent};
     } else {
 	($to_u, $from_u) = $_status->{uid}, $_status->{euid};
  	($to_g, $from_g) = $_status->{gid}, $_status->{egid};
+	$pwent = $_status->{user_pwent};
     }
     if ($completely) {
 	$from_g = $to_g;
 	$from_u = $to_u;
 	$groups = "$to_g" if $to_root;
-	$pwent = $_status->{root_pwent};
     }
 
     $! = 0;

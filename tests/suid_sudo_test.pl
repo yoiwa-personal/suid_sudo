@@ -25,6 +25,7 @@ if ($cmd eq "0") {
 	print "$k=$ENV{$k}\n";
     }
 } elsif ($cmd eq "setuid_p") {
+    print "temporarily_as_user\n";
     temporarily_as_user {
 	system("grep -i 'id' /proc/self/status");
 	system("grep -i 'Groups' /proc/self/status");
@@ -32,17 +33,27 @@ if ($cmd eq "0") {
 	print "$ENV{HOME}\n";
     };
 
+    print "restored\n";
     system("grep -i 'id' /proc/self/status");
     system("grep -i 'Groups' /proc/self/status");
     system("id");
     print "$ENV{HOME}\n";
 
-    drop_privileges_forever {
+    print "temporarily_as_real_root\n";
+    temporarily_as_real_root {
 	system("grep -i 'id' /proc/self/status");
 	system("grep -i 'Groups' /proc/self/status");
 	system("id");
 	print "$ENV{HOME}\n";
     };
+
+    print "drop_privileges_forever\n";
+    drop_privileges_forever {
+	system("grep -i 'id' /proc/self/status");
+	system("grep -i 'Groups' /proc/self/status");
+	system("id");
+	print "$ENV{HOME}\n";
+    }; # error will occur
 } elsif ($cmd eq "subproc") {
     my $ret = run_in_subprocess {
 	drop_privileges_forever;
