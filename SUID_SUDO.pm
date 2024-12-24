@@ -101,7 +101,7 @@ Please read F<README.md> for security details.
 =cut
 
 use v5.24;
-package SUID_SUDO v0.99.2; # must match with VERSION tag.
+package SUID_SUDO v0.99.3; # must match with VERSION tag.
 
 ### Exceptions
 
@@ -193,11 +193,16 @@ use File::stat;
 use User::grent;
 use User::pwent;
 use Config;
-use Data::Dumper;
+#use Data::Dumper;
 use File::Spec;
 use IO::Pipe;
 use Carp;
 use MIME::Base64 ();
+
+sub Dumper {
+    require Data::Dumper;
+    goto &Data::Dumper::Dumper;
+}
 
 ### module constants
 
@@ -248,6 +253,36 @@ sub _untaint( $ ) {
     return $1;
 }
 
+### environment handling support routines
+
+sub _pwent_to_envs($) {
+    my ($pwent) = @_;
+    return {LOGNAME  => $pwent->name,
+	    USER     => $pwent->name,
+	    USERNAME => $pwent->name,
+	    HOME     => $pwent->dir};
+}
+
+sub _save_envs(@) {
+    my $r = {};
+    for my $e (@_) {
+	$r->{$e} = $ENV{$e};
+    }
+    return $r;
+}
+
+sub _apply_envs($) {
+    my %e = %{$_[0]};
+    for my $k (keys(%e)) {
+	my $v = $e{$k};
+	if (defined($v)) {
+	    $ENV{$k} = $v;
+	} else {
+	    delete $ENV{$k};
+	}
+    }
+}
+
 ### Internal-use data
 
 # A singleton hash data representing the current process's status.
@@ -260,7 +295,7 @@ sub _make_status_now ($$%) {
     die SUIDSetupError("_make_status_now called twice") if $_status;
     my %options = _merge_options {
 	uids => undef, gids => undef,
-	  groups => undef, pwent => undef }, @options;
+	  groups => undef, pwent => undef, passed_env => {} }, @options;
 
     $_status = {is_suid => $is_suid, via_sudo => $suid_via_sudo};
 
@@ -292,7 +327,12 @@ sub _make_status_now ($$%) {
     my $root_pwent = User::pwent::getpwuid($_status->{euid});
     die unless ($root_pwent->uid == $_status->{euid});
     $_status->{root_pwent} = $root_pwent;
-    #print Dumper($_status);
+
+    my %root_envs = (%{(_save_envs(keys %{$options{passed_env}}))}, %{(_pwent_to_envs($root_pwent))});
+    $_status->{root_envs} = \%root_envs;
+    my %user_envs = (%{(_pwent_to_envs($user_pwent))}, %{$options{passed_env}});
+    $_status->{user_envs} = \%user_envs;
+
     return $_status;
 }
 
@@ -530,7 +570,7 @@ sub _decode_wrapped_info($$$$) {
     if (scalar @v != 4 or sprintf("%d", getppid()) ne $v[0] or "$uid" ne $v[1] or "$gid" ne $v[2]) {
 	die SUIDSetupError("wrapped invocation key mismatch")
     }
-    return _decode_passenv($v[3], $pass_env);
+    return {passed_env => _decode_passenv($v[3], $pass_env)};
 }
 
 sub _setup_passenv($) {
@@ -557,11 +597,12 @@ sub _setup_passenv($) {
 sub _decode_passenv($$) {
     my ($envp, $pass_env) = @_;
     my @pass_env = @$pass_env;
-    return undef if $envp eq "";
+    my $retval = {};
+    return {} if $envp eq "";
     my $env_name = "LC__SUDOWRAP_$envp";
     unless (exists $ENV{$env_name}) {
 	carp "environment $env_name missing";
-	return undef;
+	return {};
     }
     my @e_val = _keystr_decode($ENV{$env_name});
     delete $ENV{$env_name};
@@ -578,13 +619,9 @@ sub _decode_passenv($$) {
 	if ($k2 ne $k) {
 	    die SUIDSetupError("bad pass_env values: key mismatch")
 	}
-	if (defined $val) {
-	    $ENV{$k} = $val;
-	} else {
-	    delete $ENV{$k}
-	}
+	$retval->{$k} = $val;
     }
-    return {}
+    return $retval
 }
 
 ### sudo-wrapped reinvocation
@@ -611,7 +648,6 @@ sub called_via_sudo() {
     my $has_root = ($EFFECTIVE_USER_ID == 0);
 
     my $s = _check_surround();
-    #print Dumper($s);
 
     if ($s->{status} eq 'ENOENT') {
 	if ($has_root) {
@@ -949,7 +985,7 @@ sub suid_emulate( % ) {
 	sudo_wrap => 0, use_shebang => 0,
 	  perl_flags => 'T', inherit_flags => 0,
 	  realroot_ok => 0, nonsudo_ok => 0,
-	  pass_env => [], showcmd_opts => 0
+	  pass_env => [], pass_env_to_root => 0, showcmd_opts => 0
       }, @_;
 
     if ($_status) {
@@ -1013,6 +1049,7 @@ sub suid_emulate( % ) {
     }
 
     my $sudo_username = $ENV{"SUDO_USER"};
+    delete $ENV{"SUDO_USER"};
     unless ($sudo_username) {
 	die SUIDSetupError("error: sudo did not set username information");
     }
@@ -1039,7 +1076,13 @@ sub suid_emulate( % ) {
 	die SUIDSetupError("error: setresuid failed");
     }
 
-    _make_status_now(1, 1, pwent => $pwdent);
+    my $passed_env = $wrapped_invocation_info->{passed_env};
+    if ($options{pass_env_to_root}) {
+	_apply_envs($passed_env);
+	$passed_env = {};
+    }
+
+    _make_status_now(1, 1, pwent => $pwdent, passed_env => $passed_env);
     return 1;
 }
 
@@ -1054,27 +1097,29 @@ sub _set_ids($$$) {
        g => [$GID, $EGID],
        env => {}
       };
-    for my $e ("LOGNAME", "USER", "USERNAME", "HOME") {
-	$restorer->{env}->{$e} = $ENV{$e};
-    }
 
     my ($to_u, $from_u, $to_g, $from_g, $groups);
     $groups = $_status->{groups};
     my $pwent;
+    my $env_to_set;
     if ($to_root) {
 	($to_u, $from_u) = $_status->{euid}, $_status->{uid};
  	($to_g, $from_g) = $_status->{egid}, $_status->{gid};
 	$pwent = $_status->{root_pwent};
+	$env_to_set = $_status->{root_envs};
     } else {
 	($to_u, $from_u) = $_status->{uid}, $_status->{euid};
  	($to_g, $from_g) = $_status->{gid}, $_status->{egid};
 	$pwent = $_status->{user_pwent};
+	$env_to_set = $_status->{user_envs};
     }
     if ($completely) {
 	$from_g = $to_g;
 	$from_u = $to_u;
 	$groups = "$to_g" if $to_root;
     }
+
+    $restorer->{env} = _save_envs(keys %$env_to_set);
 
     $! = 0;
     $EFFECTIVE_USER_ID = $_status->{euid}; # be root to change gids
@@ -1093,11 +1138,7 @@ sub _set_ids($$$) {
 	$REAL_USER_ID = $from_u;
 	$! and die SUIDPrivilegesSettingError("_set_ids failed (3-2): $!");
     }
-
-    $ENV{LOGNAME} = $pwent->name;
-    $ENV{USER} = $pwent->name;
-    $ENV{USERNAME} = $pwent->name;
-    $ENV{HOME} = $pwent->dir;
+    _apply_envs($env_to_set);
 
     if ($proc) {
 	my ($r, $e);
@@ -1106,23 +1147,13 @@ sub _set_ids($$$) {
 	};
 	$e = $@;
 
-	#print "restoring\n";
-	#print Dumper($restorer);
-
 	$EFFECTIVE_USER_ID = $_status->{euid}; # be root to change gids
 	$! and die SUIDPrivilegesSettingError("resoring privilege failed (1): $!");
 	($REAL_GROUP_ID, $EFFECTIVE_GROUP_ID) = @{$restorer->{g}};
 	$! and die SUIDPrivilegesSettingError("resoring privilege failed (2): $!");
 	($REAL_USER_ID, $EFFECTIVE_USER_ID) = @{$restorer->{u}};
 	$! and die SUIDPrivilegesSettingError("resoring privilege failed (1): $!");
-	for my $k (keys(%{$restorer->{env}})) {
-	    my $v = $restorer->{env}->{$k};
-	    if (defined($v)) {
-		$ENV{$k} = $v;
-	    } else {
-		delete $ENV{$k};
-	    }
-	}
+	_apply_envs($restorer->{env});
 
 	die $e if $e;
 	return $r

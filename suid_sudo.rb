@@ -135,6 +135,31 @@ module SUID_SUDO
     #p(*a)
   end
 
+  module C_
+    def self._env_from_pwent(pwent)
+      return {"LOGNAME" => pwent.name,
+              "USER" => pwent.name,
+              "USERNAME" => pwent.name,
+              "HOME" => pwent.dir}
+    end
+    def self._save_envs(l)
+      r = {}
+      l.each { |k|
+        r[k] = ENV.fetch(k, nil)
+      }
+      return r
+    end
+    def self._apply_envs(l)
+      l.each { |k, v|
+        if v != nil
+          ENV[k] = v
+        else
+          ENV.delete(k)
+        end
+      }
+    end
+  end
+
   ### Internal-use classes
 
   # Class representing status of the running process under suid handling.
@@ -142,7 +167,6 @@ module SUID_SUDO
   # The class method "_status" returns a singleton instance representing
   # the current process's status.
   class SUID_STATUS_
-
     @@status = nil
 
     # Set up an singleton instance representing process status.
@@ -157,7 +181,8 @@ module SUID_SUDO
       return @@status
     end
     private
-    def initialize(is_suid, via_sudo, uids:nil, gids:nil, groups:nil, user_pwent:nil)
+  
+    def initialize(is_suid, via_sudo, uids:nil, gids:nil, groups:nil, user_pwent:nil, passed_env:{})
       @is_suid = is_suid
       @suid_via_sudo = via_sudo
 
@@ -177,10 +202,18 @@ module SUID_SUDO
 
       raise unless (user_pwent.uid == uid)
       raise unless (root_pwent.uid == euid)
+
+      root_envs = C_._save_envs(passed_env.keys)
+      root_envs.update(C_._env_from_pwent(root_pwent))
+      @root_envs = root_envs
+
+      user_envs = C_._env_from_pwent(user_pwent)
+      user_envs.update(passed_env)
+      @user_envs = user_envs
     end
     public
     attr_reader :is_suid, :suid_via_sudo, :uid, :euid, :gid, :egid
-    attr_reader :groups, :user_pwent, :root_pwent
+    attr_reader :groups, :user_pwent, :root_pwent, :root_envs, :user_envs
   end
 
   # Class representing the process's surrounding environment,
@@ -445,7 +478,7 @@ module SUID_SUDO
     if v.length != 4 or Process::ppid.to_s != v[0] or uid.to_s != v[1] or gid.to_s != v[2]
       raise SUIDSetupError::new("wrapped invocation key mismatch")
     end
-    return _decode_passenv(v[3], pass_env)
+    return {passed_env: _decode_passenv(v[3], pass_env)}
   end
 
   def self._setup_passenv(pass_env)
@@ -473,6 +506,7 @@ module SUID_SUDO
 
   def self._decode_passenv(envp, pass_env)
     return {} if envp == ""
+    retval = {}
     env_name = "LC__SUDOWRAP_" + envp.untaint
     e_val = ENV.delete(env_name) {
       # not found
@@ -488,12 +522,12 @@ module SUID_SUDO
       if k2 != k
         raise SUIDSetupError::new("bad pass_env values: key mismatch")
       elsif sep == "="
-        ENV[k] = val.untaint
+        retval[k] = val.untaint
       else
-        ENV.delete(k)
+        retval[k] = nil
       end
     }
-    return {}
+    return retval
   end
 
   ### sudo-wrapped reinvocation
@@ -834,7 +868,7 @@ before actually adding it to /etc/sudoers.
   def suid_emulate(realroot_ok:false, nonsudo_ok:false,
                    sudo_wrap:false, use_shebang:false,
                    ruby_flags:"T", inherit_flags:false,
-                   pass_env:[], showcmd_opts:nil)
+                   pass_env:[], pass_env_to_root:false, showcmd_opts:nil)
     if SUID_STATUS_::_status
       return SUID_STATUS_::_status.is_suid
     end
@@ -910,9 +944,15 @@ before actually adding it to /etc/sudoers.
     end
     Process::initgroups(sudo_username, sudo_gid)
 
+    passed_env = wrapped_invocation_info[:passed_env]
+
+    if pass_env_to_root
+      C_._apply_envs(passed_env)
+      passed_env = {}
+    end
     SUID_STATUS_::_make_status_now(
       true, true, uids:[sudo_uid, 0], gids:[sudo_gid, 0],
-      user_pwent:pwdent)
+      user_pwent:pwdent, passed_env:passed_env)
     Process::Sys::setregid(sudo_gid, 0)
     Process::Sys::setreuid(sudo_uid, 0)
 
@@ -951,27 +991,27 @@ before actually adding it to /etc/sudoers.
       groups: Process::groups,
       env: {}
     }
-    if setenv
-      ["LOGNAME", "USER", "USERNAME", "HOME"].each { |k|
-        restorer[:env][k] = ENV.fetch(k, nil)
-      }
-    end
-
     groups = s.groups
     if to_be_root
       to_g, from_g = s.egid, s.gid
       to_u, from_u = s.euid, s.uid
       pwent = s.root_pwent
+      env_to_set = s.root_envs
     else
       to_g, from_g = s.gid, s.egid
       to_u, from_u = s.uid, s.euid
       pwent = s.user_pwent
+      env_to_set = s.user_envs
     end
 
     if completely
       from_g = to_g
       from_u = to_u
       groups = [s.egid] if to_be_root
+    end
+
+    if setenv
+      restorer[:env] = C_._save_envs(env_to_set.keys())
     end
 
     begin
@@ -986,12 +1026,7 @@ before actually adding it to /etc/sudoers.
       _raise_setting_error(to_be_root, "setresuid to #{to_u.to_s} failed")
     end
     if setenv
-      n = pwent.name.dup.untaint
-      d = pwent.dir.dup.untaint
-      ENV["LOGNAME"] = n
-      ENV["USER"] = n
-      ENV["USERNAME"] = n
-      ENV["HOME"] = d
+      C_._apply_envs(env_to_set)
     end
     if procobj
       begin
@@ -1003,15 +1038,9 @@ before actually adding it to /etc/sudoers.
           Process::Sys::setregid(*restorer[:g])
           Process.groups = restorer[:groups]
           Process::Sys::setreuid(*restorer[:u])
-          restorer[:env].each { |k, v|
-            if v != nil
-              ENV[k] = v
-            else
-              ENV.delete(k)
-            end
-          }
+          C_._apply_envs(restorer[:env])
         rescue => e
-          _raise_setting_error(restorer.to_root, e.inspect)
+          _raise_setting_error(restorer[:to_root], e.inspect)
         end
       end
     end

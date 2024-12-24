@@ -107,8 +107,9 @@ Regarding the Python specifically, we strongly recommend that
 
 Regarding the Ruby, we strongly recommend that
 
-  - The script will have `-T` flag in the shebang line to ignore
-    environment variables.
+  - In Ruby before 2.7, the script will have `-T` flag in the shebang
+    line to ignore environment variables.  Note that `-T' will be
+	removed in Ruby 3.0.
 
     It means that the script must be written in taint-aware way.
     (Recent Ruby versions allows dropping the security level from the
@@ -189,9 +190,7 @@ real user-id to the invoking user, while keeping the effective user-id
 as root.
 
 After that, the script can switching between real and root user-ids as
-it wants.  In Ruby, you can use the utility functions in the "Process"
-module to do that.  This module also provides the following
-convenience functionalities.
+it wants. This module provides the following functions.
 
 ### Switching between users:
 
@@ -211,6 +210,9 @@ The following four functions will set-up effective and real user-ids
 - drop_privileges_forever: set both effective user-id and real user-id
   to the ordinary user;  there will be no way to revert to the set-uid
   status.  Required to call any untrusted programs such as editors.
+
+These functions will update and restore some user-related
+environmental variables (such as HOME and LOGUSER) accordingly.
 
 It can be used either as an ordinary function or as a context manager
 (Python) / iterator (Ruby/Perl). For example, either

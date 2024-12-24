@@ -1,3 +1,8 @@
+0.99.3
+
+visibility of environments passed by "pass_env" is restricted to ordinary users.
+
+
 0.99.2
 
 optional API parameter showcmd_opts is added.

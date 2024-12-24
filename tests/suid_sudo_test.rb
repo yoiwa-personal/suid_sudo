@@ -1,4 +1,4 @@
-#!/usr/bin/ruby -T
+#!/usr/bin/ruby
 if __FILE__ != $0
   p "run directly."
   exit(1)
@@ -7,7 +7,7 @@ require File.absolute_path("../suid_sudo", File.dirname(__FILE__)).untaint
 # require_relative claims insecure operation
 
 include SUID_SUDO::INCLUDE
-p suid_emulate(sudo_wrap:true, use_shebang:false, pass_env:['TESTVAR'], showcmd_opts:true)
+p suid_emulate(sudo_wrap:true, use_shebang:false, pass_env:[], showcmd_opts:true)
 
 cmd = ARGV[0] || "0"
 
@@ -31,28 +31,28 @@ when '1'
   p ARGV
   ENV.each {|k,v| print "#{k}=#{v}\n" }
 when 'setuid'
-  print ("be USER ")
+  print ("\nbe USER\n")
   temporarily_as_user()
   _print_ids
 
-  print ("be ROOT")
+  print ("\nbe ROOT\n")
   temporarily_as_root()
   _print_ids
 
-  print ("be REAL_ROOT")
+  print ("\nbe REAL_ROOT\n")
   temporarily_as_real_root()
   _print_ids
 
-  print ("be USER")
+  print ("\nbe USER\n")
   temporarily_as_user()
   _print_ids
 
-  print ("drop to USER")
+  print ("\ndrop to USER\n")
   drop_privileges_forever()
   _print_ids
 
   begin
-    print ("be ROOT")
+    print ("\nbe ROOT\n")
     temporarily_as_root()
     _print_ids
     print ("SHOULD FAILED!\n")
@@ -60,18 +60,18 @@ when 'setuid'
     print("...good to be failed: #{e}\n")
   end
 when 'temp'
-  p "temporary_in_user"
+  print "\ntemporary_in_user\n"
   temporarily_as_user {
     _print_ids
   }
-  p "returned"
+  print "\nreturned\n"
   _print_ids
 when 'temp_root'
-  p "temporary_in_root"
+  print "\ntemporary_in_root\n"
   temporarily_as_root {
     _print_ids
   }
-  p "returned"
+  print "\nreturned\n"
   _print_ids
 when 'system'
   p "system"

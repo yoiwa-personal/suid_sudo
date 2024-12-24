@@ -125,16 +125,27 @@ All arguments are optional and these meanings are as follows:
    flags originally passed to the Python/Ruby/Perl interpreter.
    It's always safer to specify explicitly using *_flags option.
 
- * env_pass: default []; list of names of environment variables which
-   passed the wrapped command.  Effective only with sudo_wrap=True.
-   Its value is encoded to special environmental variable; it exploits
-   the fact that sudo passes all variables starts with "LC_".
+ * env_pass:
+ 
+   default []; list of names of environment variables which passed the
+   wrapped command.  Effective only with sudo_wrap=True.  By default,
+   the passed environment variables are only visible when the user
+   privilege is set by either `temporarily_as_user` or
+   `drop_privileges_forever`.
+   
+   Technically, its value is encoded to special environmental
+   variable; it exploits the fact that sudo passes all variables
+   starts with "LC_".
 
    *Caution*: passing some system-defined variables such as IFS,
    LD_PRELOAD, LD_LIBRARY_PATH will lead to creation of a security
    hole.  This option can bypass security measures provided by sudo,
    if the script really tells this module to do so.  Use this feature
    only when it is really needed.
+
+ * env_pass_to_root: default False; setting this to True will
+   make the effect of above `env_pass` also for the root privilege.
+   The above *Caution* strongly applies.
 
  * showcmd_opts:
 

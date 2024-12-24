@@ -81,10 +81,7 @@ import errno
 _ispython2 = False
 if sys.version_info[0] == 2:
     _ispython2 = True
-    if sys.version_info < (2, 7, 13):
-        raise RuntimeError("too old python2 version")
-    else:
-        pass
+    raise RuntimeError("python2 not supported anymore")
 else:
     if sys.version_info < (3, 5, 3):
         raise RuntimeError("too old python3 version")
@@ -162,6 +159,12 @@ class WrappedSubprocessError(SUIDSubprocessError):
 # List of allowed sudo commands in full-path.
 allowed_sudo = ("/bin/sudo", "/usr/bin/sudo")
 
+def _env_from_pwent(pwent):
+    return {"LOGNAME": pwent.pw_name,
+            "USER": pwent.pw_name,
+            "USERNAME": pwent.pw_name,
+            "HOME": pwent.pw_dir}
+
 # Internal-use classes
 
 class _SuidStatus:
@@ -182,7 +185,7 @@ class _SuidStatus:
         status = self._status = _SuidStatus(*args, **kwargs)
         return status
 
-    def __init__(self, is_suid, via_sudo, signal_mode=None, uids=None, gids=None, groups=None, user_pwent=None):
+    def __init__(self, is_suid, via_sudo, signal_mode=None, uids=None, gids=None, groups=None, user_pwent=None, passed_env={}):
         self.is_suid = is_suid
         self.suid_via_sudo = via_sudo
         self.signal_mode = signal_mode
@@ -194,6 +197,12 @@ class _SuidStatus:
 
         assert (self.user_pwent.pw_uid == self.uid)
         assert (self.root_pwent.pw_uid == self.euid)
+
+        self.root_envs = _save_envs(passed_env.keys())
+        self.root_envs.update(_env_from_pwent(self.root_pwent)) # for root, pwent has priority
+
+        self.user_envs = _env_from_pwent(user_pwent)
+        self.user_envs.update(passed_env)  # for user, passed_env has priority
         return
 
     def __repr__(self):
@@ -201,7 +210,7 @@ class _SuidStatus:
             self.__class__.__name__,
             ",".join("%s=%r" % (k, getattr(self,k)) for k in
                      ("is_suid", "suid_via_sudo", "uid", "euid", "suid",
-                      "gid", "egid", "sgid", "groups", "user_pwent", "root_pwent")))
+                      "gid", "egid", "sgid", "groups", "user_pwent", "root_pwent", "user_envs", "root_envs")))
     def __str__(self):
         return repr(self)
 
@@ -438,7 +447,7 @@ def _decode_wrapped_info(v, uid, gid, pass_env):
     ppid = os.getppid()
     if len(v) != 4 or str(ppid) != v[0] or str(uid) != v[1] or str(gid) != v[2]:
         raise SUIDSetupError("error: wrapped invocation key mismatch")
-    return _decode_passenv(v[3], pass_env)
+    return {"passed_env": _decode_passenv(v[3], pass_env)}
 
 def _setup_passenv(pass_env):
     import random
@@ -465,6 +474,7 @@ def _decode_passenv(envp, pass_env):
     if envp == "": return {}
     env_name = "LC__SUDOWRAP_" + envp
     e_val = os.environ.pop(env_name, None)
+    retval = {}
     if e_val == None:
         import warnings
         warnings.warn("environment %s not found" % (env_name,))
@@ -478,11 +488,10 @@ def _decode_passenv(envp, pass_env):
         if k2 != k:
             raise SUIDSetupError("bad pass_env values: key mismatch")
         if sep == "=":
-            os.environ[k] = val
+            retval[k] = val
         else:
-            #del os.environ[k]
-            os.environ.pop(k, None) # ignore KeyError
-    return None
+            retval[k] = None
+    return retval
 
 # sudo-wrapped reinvocation
 
@@ -720,6 +729,20 @@ before actually adding it to /etc/sudoers.
     if check:
         exit(2)
 
+# environment variables handling
+
+def _save_envs(names):
+    return {k: os.environ.get(k, None) for k in names}
+
+def _apply_envs(envs):
+    oldval = _save_envs(envs.keys())
+    for (k, v) in envs.items():
+        if v == None:
+            os.environ.pop(k, None) # ignore KeyError
+        else:
+            os.environ[k] = v
+    return oldval
+
 # Detect and initialize sudo'ed and suid'ed environment
 
 def _pick_environment(ename, type=None):
@@ -736,7 +759,7 @@ def _pick_environment(ename, type=None):
 def suid_emulate(realroot_ok=False, nonsudo_ok=False,
                  sudo_wrap=False, use_shebang=False,
                  python_flags="IR", inherit_flags=False,
-                 user_signal=None, pass_env=[],
+                 user_signal=None, pass_env=[], pass_env_to_root=False,
                  showcmd_opts=None):
     """Emulate behavior of set-uid binary when invoked via sudo(1).
 
@@ -899,9 +922,14 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
         #    sudo_groups = os.getgrouplist(sudo_username, sudo_gid)
         #    os.setgroups(sudo_groups)
 
+        passed_env = wrapped_invocation_info["passed_env"]
+        if pass_env_to_root:
+            _apply_envs(passed_env)
+            passed_env = {}
+
         _SuidStatus._make_status_now(
             True, True, uids=(sudo_uid, 0, 0), gids=(sudo_gid, 0, 0),
-            user_pwent=pwdent)
+            user_pwent=pwdent, passed_env=passed_env)
 
         os.setresgid(sudo_gid, 0, 0)
         os.setresuid(sudo_uid, 0, 0)
@@ -922,27 +950,23 @@ def _raise_setting_error(to_be_root, msg):
 
 class _UidContextRestorer:
     # helper for context-based restorations
-    def __init__(self, restore_to_root, saveenv):
+    def __init__(self, restore_to_root, env_to_restore):
         self.u = os.getresuid()
         self.g = os.getresgid()
         self.groups = os.getgroups()
         self.to_root = restore_to_root
-        if saveenv:
-            self.env = {k: os.getenv(k, None) for k in ("LOGNAME", "USER", "USERNAME", "HOME")}
-        else:
-            self.env = {}
+        self.env = _save_envs(env_to_restore)
 
     def __enter__(self):
         return self
 
     def __exit__(self, *args):
         try:
-            os.seteuid(s.euid)
+            os.seteuid(_SuidStatus._status.euid)
             os.setgroups(self.groups)
             os.setresgid(*self.g)
             os.setresuid(*self.u)
-            for k in self.env:
-                os.putenv(k, self.env[k])
+            _apply_envs(self.env)
         except OSError as e:
             _raise_setting_error(self.to_root, repr(e))
         if os.geteuid() != self.u[1]:
@@ -956,23 +980,29 @@ def _set_uids(to_be_root, completely, setenv=True):
     if s is None:
         raise SUIDSetupError("suid wrapper is not initialized")
 
-    restorer = _UidContextRestorer(not to_be_root, saveenv=setenv)
-
     groups = s.groups
     if to_be_root:
         to_g, from_g, save_g = s.egid, s.gid, s.sgid
         to_u, from_u, save_u = s.euid, s.uid, s.suid
         pwent = s.root_pwent
+        env_to_set = s.root_envs
     else:
         to_g, from_g, save_g = s.gid, s.egid, s.sgid
         to_u, from_u, save_u = s.uid, s.euid, s.suid
         pwent = s.user_pwent
+        env_to_set = s.user_envs
 
     if completely:
         from_g = save_g = to_g
         from_u = save_u = to_u
         if to_be_root:
             groups = [s.egid]
+
+    if not setenv:
+        env_to_set = {}
+
+    restorer = _UidContextRestorer(not to_be_root, env_to_restore=env_to_set.keys())
+
     try:
         os.seteuid(s.euid)
         os.setgroups(groups)
@@ -983,10 +1013,7 @@ def _set_uids(to_be_root, completely, setenv=True):
     if os.geteuid() != to_u:
         _raise_setting_error(to_be_root, "setresuid to %d failed" % to_u)
     if setenv:
-        os.environ["LOGNAME"] = pwent.pw_name
-        os.environ["USER"] = pwent.pw_name
-        os.environ["USERNAME"] = pwent.pw_name
-        os.environ["HOME"] = pwent.pw_dir
+        _apply_envs(env_to_set)
     return restorer
 
 def temporarily_as_root(setenv=True):
