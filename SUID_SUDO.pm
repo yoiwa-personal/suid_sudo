@@ -708,7 +708,8 @@ sub _construct_wrap_invoke_cmdline( % ) {
     my %options = _merge_options {
 	use_shebang => 0,
 	perl_flags => 'T', inherit_flags => 0,
-	pass_env => [], wrapkey => undef
+	pass_env => [], wrapkey => undef,
+	sudo_allow_cached_cred => 0
     }, @_;
 
     croak unless defined $options{wrapkey};
@@ -744,16 +745,21 @@ sub _construct_wrap_invoke_cmdline( % ) {
 	    last;
 	}
     }
-    my $args;
-    $args = [$cmd, @execname, @flags, $scriptname, ("----sudo_wrap=" . $options{wrapkey})];
-    return ($cmd, $args);
+
+    my $sudo_flags = ["-k"];
+    if ($options{sudo_allow_cached_cred} == -1) { $sudo_flags = ["-k", "-n"]; }
+    elsif ($options{sudo_allow_cached_cred}) { $sudo_flags = []; }
+
+    my $sudocmd = [$cmd, @$sudo_flags];
+    my $args = [@execname, @flags, $scriptname, ("----sudo_wrap=" . $options{wrapkey})];
+    return ($sudocmd, $args);
 }
 
 sub _wrap_invoke_sudo ( % ) {
     my %options = _merge_options {
 	use_shebang => 0,
 	perl_flags => 'T', inherit_flags => 0,
-	pass_env => []
+	pass_env => [], sudo_allow_cached_cred => 0,
     }, @_;
 
     my $envp;
@@ -765,17 +771,18 @@ sub _wrap_invoke_sudo ( % ) {
     }
     my $wrapkey = _encode_wrapper_info($envp);
 
-    my ($cmd, $args) = _construct_wrap_invoke_cmdline
+    my ($sudocmd, $args) = _construct_wrap_invoke_cmdline
       ( use_shebang => $options{use_shebang},
 	perl_flags => $options{perl_flags},
 	inherit_flags => $options{inherit_flags},
+	sudo_allow_cached_cred => $options{sudo_allow_cached_cred},
 	wrapkey => $wrapkey );
 
     my @args;
-    @args = (@$args, map { _untaint $_ } @ARGV);
+    @args = (@$sudocmd, @$args, map { _untaint $_ } @ARGV);
 
     exec(@args);
-    die SUIDSetupError("could not invoke $cmd for wrapping: $!");
+    die SUIDSetupError("could not invoke $args[0] for wrapping: $!");
     exit(1)
 }
 
@@ -793,23 +800,24 @@ sub _wrap_invoke_sudo ( % ) {
 sub compute_sudo_commane_line_patterns( % ) {
     my %options = _merge_options {
 	use_shebang => 0,
-	perl_flags => 'T', inherit_flags => 0,
-	pass_env => [],
-	user_str => ".user."
+	  perl_flags => 'T', inherit_flags => 0,
+	  sudo_allow_cached_cred => [],
+	  pass_env => [],
+	  user_str => ".user."
     }, @_;
 
-    my ($cmd, $cmdline) = _construct_wrap_invoke_cmdline
+    my ($sudocmd, $cmdline) = _construct_wrap_invoke_cmdline
       ( use_shebang => $options{use_shebang},
 	perl_flags => $options{perl_flags},
 	inherit_flags => $options{inherit_flags},
+	sudo_allow_cached_cred => $options{sudo_allow_cached_cred},
 	wrapkey => "" );
 
     my $user_str = $options{user_str};
-    my $cmdstr = join(" ", @$cmdline);
+    my $cmdstr = join(" ", @$sudocmd, @$cmdline);
 
     my @cmdline_sudoers = @$cmdline;
     map { s/([ =*\\])/\\$1/g } @cmdline_sudoers;
-    shift @cmdline_sudoers;
 
     my $sudoers = join(" ", @cmdline_sudoers);
     $sudoers = "${user_str} ALL = (root:root) NOPASSWD: ${sudoers}*";
@@ -836,6 +844,7 @@ sub show_sudo_command_line( % ) {
     my %options = _merge_options {
 	use_shebang => 0,
 	perl_flags => 'T', inherit_flags => 0,
+	sudo_allow_cached_cred => 0,
 	pass_env => [],
 	check => 0
     }, @_;
@@ -850,6 +859,7 @@ sub show_sudo_command_line( % ) {
       ( use_shebang => $options{use_shebang},
 	perl_flags => $options{perl_flags},
 	inherit_flags => $options{inherit_flags},
+	sudo_allow_cached_cred => $options{sudo_allow_cached_cred},
 	user_str => ".user." );
 
     printf STDERR ('
@@ -985,7 +995,9 @@ sub suid_emulate( % ) {
 	sudo_wrap => 0, use_shebang => 0,
 	  perl_flags => 'T', inherit_flags => 0,
 	  realroot_ok => 0, nonsudo_ok => 0,
-	  pass_env => [], pass_env_to_root => 0, showcmd_opts => 0
+	  pass_env => [], pass_env_to_root => 0,
+	  sudo_allow_cached_cred => 0,
+	  showcmd_opts => 0
       }, @_;
 
     if ($_status) {
@@ -997,6 +1009,7 @@ sub suid_emulate( % ) {
 			       perl_flags => $options{perl_flags},
 			       inherit_flags => $options{inherit_flags},
 			       pass_env => $options{pass_env},
+			       sudo_allow_cached_cred => $options{sudo_allow_cached_cred},
 			       check => $options{showcmd_opts});
     }
 
@@ -1020,6 +1033,7 @@ sub suid_emulate( % ) {
 	    _wrap_invoke_sudo(use_shebang => $options{use_shebang},
 			      perl_flags => $options{perl_flags},
 			      inherit_flags => $options{inherit_flags},
+			      sudo_allow_cached_cred => $options{sudo_allow_cached_cred},
 			      pass_env => $options{pass_env}
 			     );
 	}

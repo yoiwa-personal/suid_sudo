@@ -7,7 +7,9 @@ require File.absolute_path("../suid_sudo", File.dirname(__FILE__)).untaint
 # require_relative claims insecure operation
 
 include SUID_SUDO::INCLUDE
-p suid_emulate(sudo_wrap:true, use_shebang:false, pass_env:[], showcmd_opts:true)
+p suid_emulate(sudo_wrap:true, use_shebang:false,
+               sudo_allow_cached_cred:true,
+               pass_env:[], showcmd_opts:true)
 
 cmd = ARGV[0] || "0"
 

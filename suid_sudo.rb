@@ -162,6 +162,7 @@ module SUID_SUDO
       }
     end
     IS_RUBY2 = RUBY_VERSION =~ /\A[12]\./
+    IS_RUBY2_7 = RUBY_VERSION =~ /\A2\.7\./
     if IS_RUBY2
       def _untaint(o)
         o.dup.untaint
@@ -647,6 +648,7 @@ module SUID_SUDO
   end
 
   def self._construct_wrap_invoke_cmdline(use_shebang:false, ruby_flags:"T", inherit_flags:false,
+                                          sudo_allow_cached_cred:false,
                                           wrapkey:nil)
     if not $0 or $0 == "-e"
       raise SUIDSetupError.new("can not reinvoke script: not running a script?")
@@ -674,12 +676,22 @@ module SUID_SUDO
         cmd = c
       end
     }
-    args = [cmd] + execname + flags + [scriptname, "----sudo_wrap=" + wrapkey]
-    return cmd, args
+
+    if sudo_allow_cached_cred == -1
+      sudo_flags = ["-k", "-n"]
+    elsif sudo_allow_cached_cred
+      sudo_flags = []
+    else
+      sudo_flags = ["-k"]
+    end
+    sudocmd = [cmd] + sudo_flags
+    args = execname + flags + [scriptname, "----sudo_wrap=" + wrapkey]
+    return sudocmd, args
   end
 
   def self._wrap_invoke_sudo(use_shebang:false,
                              ruby_flags:"", inherit_flags:false,
+                             sudo_allow_cached_cred:false,
                              pass_env:[])
     if ! pass_env || pass_env.length == 0
       env_var = ""
@@ -689,13 +701,14 @@ module SUID_SUDO
     wrapkey = _encode_wrapper_info(env_var)
 
     dp ["ARGV", ARGV, "PID", Process::pid]
-    cmd, args = _construct_wrap_invoke_cmdline(
+    sudocmd, args = _construct_wrap_invoke_cmdline(
            use_shebang:use_shebang,
            ruby_flags:ruby_flags,
            inherit_flags:inherit_flags,
+           sudo_allow_cached_cred:sudo_allow_cached_cred,
            wrapkey:wrapkey)
 
-    args = args + ARGV.map {|x| _untaint(x)}
+    args = sudocmd + args + ARGV.map {|x| _untaint(x)}
     dp args
     begin
       exec(*args)
@@ -718,18 +731,19 @@ module SUID_SUDO
   # user name in sudoers.
   def compute_sudo_commane_line_patterns(use_shebang:false, ruby_flags:"T",
                                          inherit_flags:false,
+                                         sudo_allow_cached_cred:false,
                                          pass_env:[], user_str:".user.")
-    cmd, cmdline = _construct_wrap_invoke_cmdline(
+    sudocmd, cmdline = _construct_wrap_invoke_cmdline(
         use_shebang:use_shebang, ruby_flags:ruby_flags,
         inherit_flags:inherit_flags,
+        sudo_allow_cached_cred:sudo_allow_cached_cred,
         wrapkey:'')
 
-    cmdstr = cmdline.join(" ")
+    cmdstr = (sudocmd + cmdline).join(" ")
 
     cmdline_sudoers = cmdline.map {|x|
       x.gsub(/([ =*\\])/) { |s| "\\" + s }
     }
-    cmdline_sudoers.shift
 
     sudoers = cmdline_sudoers.join(" ")
     sudoers = "#{user_str} ALL = (root:root) NOPASSWD: #{sudoers}*"
@@ -753,6 +767,7 @@ module SUID_SUDO
   # If script want to use own logics or conditions for showing this
   # information, call this function with check:false (default).
   def show_sudo_command_line(use_shebang:false, ruby_flags:"T", inherit_flags:false,
+                             sudo_allow_cached_cred:false,
                              pass_env:[], check:false)
     if check
       if check == true
@@ -766,6 +781,7 @@ module SUID_SUDO
     cmdstr, sudoers = compute_sudo_commane_line_patterns(
               use_shebang:false, ruby_flags:"T",
               inherit_flags:false,
+              sudo_allow_cached_cred:sudo_allow_cached_cred,
               pass_env:[], user_str:".user.")
 
     $stderr.printf('
@@ -889,7 +905,9 @@ before actually adding it to /etc/sudoers.
   def suid_emulate(realroot_ok:false, nonsudo_ok:false,
                    sudo_wrap:false, use_shebang:false,
                    ruby_flags:"T", inherit_flags:false,
-                   pass_env:[], pass_env_to_root:false, showcmd_opts:nil)
+                   pass_env:[], pass_env_to_root:false,
+                   sudo_allow_cached_cred:false,
+                   showcmd_opts:nil)
     if SUID_STATUS_::_status
       return SUID_STATUS_::_status.is_suid
     end
@@ -897,7 +915,8 @@ before actually adding it to /etc/sudoers.
     if showcmd_opts
       show_sudo_command_line(
         use_shebang:use_shebang, ruby_flags:ruby_flags,
-        inherit_flags:inherit_flags, pass_env:pass_env, check:showcmd_opts)
+        inherit_flags:inherit_flags, sudo_allow_cached_cred:sudo_allow_cached_cred,
+        pass_env:pass_env, check:showcmd_opts)
     end
 
     uid = Process::Sys::getuid
@@ -921,6 +940,7 @@ before actually adding it to /etc/sudoers.
         end
         _wrap_invoke_sudo(use_shebang:use_shebang,
                           ruby_flags:ruby_flags, inherit_flags:inherit_flags,
+                          sudo_allow_cached_cred:sudo_allow_cached_cred,
                           pass_env:pass_env)
       end
       SUID_STATUS_::_make_status_now(false, false)

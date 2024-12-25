@@ -13,6 +13,7 @@ sub print_ids () {
 }
 
 my $r = suid_emulate(sudo_wrap => 1, use_shebang => 1, pass_env => [],
+		     sudo_allow_cached_cred => 1,
 		     showcmd_opts => 1);
 print "suid_emulate -> $r\n";
 

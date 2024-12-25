@@ -608,7 +608,7 @@ def _process_python_flags(python_flags, inherit_flags):
                 _add(keys_to_flags[key])
     return flags
 
-def _construct_wrap_invoke_cmdline(use_shebang, python_flags, inherit_flags, wrapkey):
+def _construct_wrap_invoke_cmdline(use_shebang, python_flags, inherit_flags, sudo_allow_cached_cred, wrapkey):
     scriptname = os.path.abspath(sys.argv[0])
     execname = sys.executable
     if not os.path.exists(scriptname):
@@ -629,36 +629,46 @@ def _construct_wrap_invoke_cmdline(use_shebang, python_flags, inherit_flags, wra
         if os.path.exists(c):
             cmd = c
             break
-    args = [cmd] + execname + flags + [scriptname, "----sudo_wrap=%s" % (wrapkey,)]
-    return cmd, args
 
-def _wrap_invoke_sudo(use_shebang=False, python_flags="IR", inherit_flags=False, pass_env=[]):
+    if sudo_allow_cached_cred == -1:
+        sudo_flags = ["-k", "-n"]
+    elif sudo_allow_cached_cred:
+        sudo_flags = []
+    else:
+        sudo_flags = ["-k"]
+
+    sudocmd = [cmd] + sudo_flags
+    args = execname + flags + [scriptname, "----sudo_wrap=%s" % (wrapkey,)]
+    return sudocmd, args
+
+def _wrap_invoke_sudo(use_shebang=False, python_flags="IR", inherit_flags=False, sudo_allow_cached_cred=False, pass_env=[]):
     if pass_env:
         env_var = _setup_passenv(pass_env)
     else:
         env_var = ""
     wrapkey = _encode_wrapper_info(env_var)
 
-    cmd, cmdline = _construct_wrap_invoke_cmdline(
+    sudocmd, cmdline = _construct_wrap_invoke_cmdline(
         use_shebang=use_shebang, python_flags=python_flags,
-        inherit_flags=inherit_flags,
+        inherit_flags=inherit_flags, sudo_allow_cached_cred=sudo_allow_cached_cred,
         wrapkey=wrapkey)
-    args = cmdline +  sys.argv[1:]
-    #print(args)
+    cmd = sudocmd[0]
+    args = sudocmd[1:] + cmdline + sys.argv[1:]
+
     try:
-        os.execv(cmd, args)
+        os.execv(cmd, [cmd] + args)
     except OSError as e:
         raise SUIDSetupError("could not invoke %s for wrapping: %s" % (cmd, e.strerror))
     assert False
 
-def compute_sudo_commane_line_patterns(use_shebang, python_flags, inherit_flags, pass_env, user_str):
+def compute_sudo_commane_line_patterns(use_shebang, python_flags, inherit_flags, sudo_allow_cached_cred, pass_env, user_str):
     """Returns the commandline pattern which is used for reinvocation via sudo.
 
     Returned value is a pair of strings to be displayed: the first is
     the sudo command line, and the second is a possible template for
     the sudoers configuration.
 
-    Parameters use_shebang, python_flags, inherit_flags, pass_env are
+    Parameters use_shebang, python_flags, inherit_flags, pass_env,  are
     as same as suid_emulate().
 
     The parameter user_str is used in the position of the invoking
@@ -667,21 +677,21 @@ def compute_sudo_commane_line_patterns(use_shebang, python_flags, inherit_flags,
 
     import re
 
-    cmd, cmdline = _construct_wrap_invoke_cmdline(
+    sudocmd, cmdline = _construct_wrap_invoke_cmdline(
         use_shebang=use_shebang, python_flags=python_flags,
         inherit_flags=inherit_flags,
+        sudo_allow_cached_cred=sudo_allow_cached_cred,
         wrapkey='')
 
-    cmdstr = " ".join(cmdline)
+    cmdstr = " ".join(sudocmd + cmdline)
 
     cmdline_sudoers = [re.sub(r'([ =*\\])', r'\\\1', x) for x in cmdline]
-    del cmdline_sudoers[0] # sudo itself
     sudoers = " ".join(cmdline_sudoers)
     sudoers = "%s ALL = (root:root) NOPASSWD: %s*" % (user_str, sudoers)
 
     return cmdstr, sudoers
 
-def show_sudo_command_line(use_shebang, python_flags, inherit_flags, pass_env, check=False):
+def show_sudo_command_line(use_shebang, python_flags, inherit_flags, sudo_allow_cached_cred=False, pass_env=[], check=False):
 
     """Show the commandline pattern which is used for reinvocation via sudo.
 
@@ -708,7 +718,7 @@ def show_sudo_command_line(use_shebang, python_flags, inherit_flags, pass_env, c
             return
 
     cmdstr, sudoers = compute_sudo_commane_line_patterns(
-        use_shebang=use_shebang, python_flags=python_flags,
+        use_shebang=use_shebang, python_flags=python_flags, sudo_allow_cached_cred=sudo_allow_cached_cred,
         inherit_flags=inherit_flags, pass_env=pass_env, user_str=".user.")
 
     print("""
@@ -760,6 +770,7 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
                  sudo_wrap=False, use_shebang=False,
                  python_flags="IR", inherit_flags=False,
                  user_signal=None, pass_env=[], pass_env_to_root=False,
+                 sudo_allow_cached_cred=False,
                  showcmd_opts=None):
     """Emulate behavior of set-uid binary when invoked via sudo(1).
 
@@ -861,6 +872,7 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
         show_sudo_command_line(
             use_shebang=use_shebang, python_flags=python_flags,
             inherit_flags=inherit_flags, pass_env=pass_env,
+            sudo_allow_cached_cred=sudo_allow_cached_cred,
             check=showcmd_opts)
 
     uid, euid, suid = os.getresuid()
@@ -881,6 +893,7 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
                 raise SUIDSetupError("error: detected wrapping loop")
             _wrap_invoke_sudo(use_shebang=use_shebang,
                               python_flags=python_flags, inherit_flags=inherit_flags,
+                              sudo_allow_cached_cred=sudo_allow_cached_cred,
                               pass_env=pass_env)
         _SuidStatus._make_status_now(False, False)
         return False
