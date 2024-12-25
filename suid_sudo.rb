@@ -161,8 +161,19 @@ module SUID_SUDO
         end
       }
     end
+    IS_RUBY2 = RUBY_VERSION =~ /\A[12]\./
+    if IS_RUBY2
+      def _untaint(o)
+        o.dup.untaint
+      end
+    else
+      def _untaint(o)
+        o
+      end
+    end
   end
   include COMMON_FUNCTIONS_
+  extend COMMON_FUNCTIONS_
 
   ### Internal-use classes
 
@@ -506,14 +517,14 @@ module SUID_SUDO
       end
     }
     dp [env_name, out]
-    ENV[env_name] = _keystr_encode(*out).untaint
+    ENV[env_name] = _untaint(_keystr_encode(*out))
     return p
   end
 
   def self._decode_passenv(envp, pass_env)
     return {} if envp == ""
     retval = {}
-    env_name = "LC__SUDOWRAP_" + envp.untaint
+    env_name = "LC__SUDOWRAP_" + _untaint(envp)
     e_val = ENV.delete(env_name) {
       # not found
       warn("environment #{env_name.inspect} missing")
@@ -528,7 +539,7 @@ module SUID_SUDO
       if k2 != k
         raise SUIDSetupError::new("bad pass_env values: key mismatch")
       elsif sep == "="
-        retval[k] = val.untaint
+        retval[k] = _untaint(val)
       else
         retval[k] = nil
       end
@@ -619,7 +630,11 @@ module SUID_SUDO
     re = proc { |x|
       unless done[x]
         done[x] = true
-        l << "-#{x}"
+        if x == 'T' && !IS_RUBY2
+          l << '--disable=rubyopt'
+        else
+          l << "-#{x}"
+        end
       end
     }
     ruby_flags.each_char {|x|
@@ -636,8 +651,8 @@ module SUID_SUDO
     if not $0 or $0 == "-e"
       raise SUIDSetupError.new("can not reinvoke script: not running a script?")
     end
-    scriptname = File.absolute_path($0).untaint
-    execname = _get_ruby_interpreter().untaint
+    scriptname = _untaint(File.absolute_path($0))
+    execname = _untaint(_get_ruby_interpreter())
     flags = []
     if not File.exists?(scriptname)
       raise SUIDSetupError.new("can not reinvoke script: could not found myself")
@@ -680,7 +695,7 @@ module SUID_SUDO
            inherit_flags:inherit_flags,
            wrapkey:wrapkey)
 
-    args = args + ARGV.map {|x| x.dup.untaint}
+    args = args + ARGV.map {|x| _untaint(x)}
     dp args
     begin
       exec(*args)
@@ -936,7 +951,7 @@ before actually adding it to /etc/sudoers.
     sudo_username = ENV.delete("SUDO_USER") {
       raise SUIDSetupError::new("sudo did not set username information")
     }
-    sudo_username = sudo_username.dup.untaint
+    sudo_username = _untaint(sudo_username)
     ENV.delete("SUDO_COMMAND")
     ENV.delete("MAIL") # not worth to simulate
 
