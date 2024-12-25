@@ -114,6 +114,11 @@ All arguments are optional and these meanings are as follows:
    sudo_wrap=True and use_shebang=False.  A string containing
    one-character flags to be passed to the Ruby interpreter called
    when sudo_wrap=true.
+   
+   In Ruby 3.0 and above, the "T" flag will be translated to
+   "-disable=rubyopt" option.  When using Ruby 2.7 and a warning
+   message for "-T deprecation" is clumsy, set this to "" with extra
+   cautions on programming.
 
  * perl_flags: (Perl only) default "T"; only meaningful when
    sudo_wrap=True and use_shebang=False.  A string containing
@@ -146,6 +151,25 @@ All arguments are optional and these meanings are as follows:
  * env_pass_to_root: default False; setting this to True will
    make the effect of above `env_pass` also for the root privilege.
    The above *Caution* strongly applies.
+
+ * sudo_allow_cached_cred: default False; only meaningful when sudo_wrap=True.
+   If set to True, it will allow sudo to reuse cached credential for
+   the user invoking the script, and omit asking the passwords.
+ 
+   This module is intended to be used with an explicit configuration in
+   `sudoers` file, but when the invoking user (typically an administrator) 
+   is allowed to invoke any commands via sudo, this module will work
+   without any explicit configurations.
+
+   Default value of False will protect users with "sudo all commands" rights
+   to accidentally invoking the script with suid emulation.
+
+   Setting the value `-1` further enforces the restriction: if there
+   are no explicit configuration, sudo will reject working.
+
+   Note that this protection is only a fool-proof functionality, not
+   any security enforcement: invoking any untrusted commands with sudo
+   admin setting is always dangerous.
 
  * showcmd_opts:
 

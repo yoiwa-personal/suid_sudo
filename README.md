@@ -108,7 +108,7 @@ Regarding the Python specifically, we strongly recommend that
 Regarding the Ruby, we strongly recommend that
 
   - In Ruby before 2.7, the script will have `-T` flag in the shebang
-    line to ignore environment variables.  Note that `-T' will be
+    line to ignore environment variables.  Note that `-T` will be
 	removed in Ruby 3.0.
 
     It means that the script must be written in taint-aware way.
