@@ -131,25 +131,28 @@ module SUID_SUDO
   # A pattern matching suppressed call stack entries on error
   ERROR_FILTER_REGEXP = %r"#{Regexp.quote(__FILE__)}:\d+:in \`\_"
 
+  ### some common functions
+
   def self.dp(*a)
     #p(*a)
   end
 
-  module C_
-    def self._env_from_pwent(pwent)
+  module COMMON_FUNCTIONS_
+    module_function
+    def _env_from_pwent(pwent)
       return {"LOGNAME" => pwent.name,
               "USER" => pwent.name,
               "USERNAME" => pwent.name,
               "HOME" => pwent.dir}
     end
-    def self._save_envs(l)
+    def _save_envs(l)
       r = {}
       l.each { |k|
         r[k] = ENV.fetch(k, nil)
       }
       return r
     end
-    def self._apply_envs(l)
+    def _apply_envs(l)
       l.each { |k, v|
         if v != nil
           ENV[k] = v
@@ -159,6 +162,7 @@ module SUID_SUDO
       }
     end
   end
+  include COMMON_FUNCTIONS_
 
   ### Internal-use classes
 
@@ -167,6 +171,8 @@ module SUID_SUDO
   # The class method "_status" returns a singleton instance representing
   # the current process's status.
   class SUID_STATUS_
+    include COMMON_FUNCTIONS_
+
     @@status = nil
 
     # Set up an singleton instance representing process status.
@@ -203,11 +209,11 @@ module SUID_SUDO
       raise unless (user_pwent.uid == uid)
       raise unless (root_pwent.uid == euid)
 
-      root_envs = C_._save_envs(passed_env.keys)
-      root_envs.update(C_._env_from_pwent(root_pwent))
+      root_envs = _save_envs(passed_env.keys)
+      root_envs.update(_env_from_pwent(root_pwent))
       @root_envs = root_envs
 
-      user_envs = C_._env_from_pwent(user_pwent)
+      user_envs = _env_from_pwent(user_pwent)
       user_envs.update(passed_env)
       @user_envs = user_envs
     end
@@ -947,7 +953,7 @@ before actually adding it to /etc/sudoers.
     passed_env = wrapped_invocation_info[:passed_env]
 
     if pass_env_to_root
-      C_._apply_envs(passed_env)
+      _apply_envs(passed_env)
       passed_env = {}
     end
     SUID_STATUS_::_make_status_now(
@@ -1011,7 +1017,7 @@ before actually adding it to /etc/sudoers.
     end
 
     if setenv
-      restorer[:env] = C_._save_envs(env_to_set.keys())
+      restorer[:env] = _save_envs(env_to_set.keys())
     end
 
     begin
@@ -1026,7 +1032,7 @@ before actually adding it to /etc/sudoers.
       _raise_setting_error(to_be_root, "setresuid to #{to_u.to_s} failed")
     end
     if setenv
-      C_._apply_envs(env_to_set)
+      _apply_envs(env_to_set)
     end
     if procobj
       begin
@@ -1038,7 +1044,7 @@ before actually adding it to /etc/sudoers.
           Process::Sys::setregid(*restorer[:g])
           Process.groups = restorer[:groups]
           Process::Sys::setreuid(*restorer[:u])
-          C_._apply_envs(restorer[:env])
+          _apply_envs(restorer[:env])
         rescue => e
           _raise_setting_error(restorer[:to_root], e.inspect)
         end
