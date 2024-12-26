@@ -133,9 +133,9 @@ module SUID_SUDO
 
   ### some common functions
 
-  def self.dp(*a)
+  #def self.dp(*a)
     #p(*a)
-  end
+  #end
 
   module COMMON_FUNCTIONS_
     module_function
@@ -492,7 +492,6 @@ module SUID_SUDO
   end
 
   def self._decode_wrapped_info(v, uid, gid, pass_env)
-    dp ["_decode_wrapped_info", v, uid, gid, pass_env]
     if v.length != 4 or Process::ppid.to_s != v[0] or uid.to_s != v[1] or gid.to_s != v[2]
       raise SUIDSetupError::new("wrapped invocation key mismatch")
     end
@@ -517,7 +516,7 @@ module SUID_SUDO
         out << "#{k}=#{v}"
       end
     }
-    dp [env_name, out]
+
     ENV[env_name] = _untaint(_keystr_encode(*out))
     return p
   end
@@ -553,7 +552,7 @@ module SUID_SUDO
   def self._detect_wrapped_reinvoked()
     return nil if ARGV.length == 0
     arg = ARGV[0]
-    dp ["ARGV[0]", arg, "PPID", Process::ppid, "PID", Process::pid]
+
     if /\A----sudo_wrap=(.+)\z/ =~ arg
       v = _keystr_decode($1)
       if v
@@ -700,7 +699,6 @@ module SUID_SUDO
     end
     wrapkey = _encode_wrapper_info(env_var)
 
-    dp ["ARGV", ARGV, "PID", Process::pid]
     sudocmd, args = _construct_wrap_invoke_cmdline(
            use_shebang:use_shebang,
            ruby_flags:ruby_flags,
@@ -709,7 +707,7 @@ module SUID_SUDO
            wrapkey:wrapkey)
 
     args = sudocmd + args + ARGV.map {|x| _untaint(x)}
-    dp args
+
     begin
       exec(*args)
     rescue SystemCallError => e
@@ -1239,7 +1237,6 @@ before actually adding it to /etc/sudoers.
       begin
         retr = YAML.safe_load(r.read(nil))
         ret, rete, mark = retr
-        dp retr
       rescue Exception => e
         ret, rete, mark = nil, SUIDSubprocessExecutionError::new("run_in_subprocess: decoding failed #{e.inspect}")
       end
@@ -1300,7 +1297,7 @@ before actually adding it to /etc/sudoers.
       privilege = self.method(privilege)
     end
     require 'yaml'
-    dp ["args", args, "kwargs", kwargs, "privilege", privilege]
+
     exception_mode = false
     if mode == :system && kwargs.include?(:exception)
       kwargs = kwargs.dup

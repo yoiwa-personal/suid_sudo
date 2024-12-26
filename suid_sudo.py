@@ -305,11 +305,6 @@ class _Surround_Info:
         return "/proc/%d/%s" % (pid, self._procexe_linkname)
 
     def __init__(self):
-
-        def b(x):
-            #print(x)
-            pass
-
         # self status is reliable and stable.
         self.pid = pid = os.getpid()
 
@@ -335,7 +330,7 @@ class _Surround_Info:
             ppid_1 = path_1 = stat_1 = stat_2 = path_2 = ppid_2 = None
             self.status = None
 
-            b("==== ppid_1 ==== (%d)" % (xtimes,))
+            #b("==== ppid_1 ==== (%d)" % (xtimes,))
             ppid_1 = os.getppid()
             if (ppid_1 == 1) :
                 # parent exited
@@ -347,7 +342,7 @@ class _Surround_Info:
             linkpath_1 = _Surround_Info.procexe_linkname(ppid_1)
 
             try:
-                b("path_1")
+                #b("path_1")
                 path_1 = os.readlink(linkpath_1)
             except OSError as e:
                 if e.errno == errno.ENOENT:
@@ -374,7 +369,7 @@ class _Surround_Info:
                         raise
 
             try:
-                b("stat_1")
+                #b("stat_1")
                 stat_1 = os.stat(linkpath_1)
             except OSError as e:
                 if e.errno == errno.ENOENT:
@@ -396,7 +391,7 @@ class _Surround_Info:
                         raise e
 
             try:
-                b("path_2")
+                #b("path_2")
                 path_2 = os.readlink(linkpath_1)
                 if path_1 != path_2: continue
 
@@ -407,7 +402,7 @@ class _Surround_Info:
                 else:
                     raise e
 
-            b("ppid_2")
+            #b("ppid_2")
             ppid_2 = os.getppid()
             if ppid_1 != ppid_2: continue
 
@@ -603,7 +598,6 @@ def _process_python_flags(python_flags, inherit_flags):
         _add(f)
     if inherit_flags:
         for key in keys_to_flags:
-            #print(key, getattr(sys.flags, key, None))
             if getattr(sys.flags, key, False):
                 _add(keys_to_flags[key])
     return flags

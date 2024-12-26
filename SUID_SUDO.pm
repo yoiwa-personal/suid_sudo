@@ -419,7 +419,7 @@ sub _create_surround_init () {
     # (OK for suid_sudo because it will never happen when one side is sudo)
 
       #b = lambda {|x| p x}
-    my $b = sub {print @_, "\n" if 0};
+    #my $b = sub {print @_, "\n" if 0};
 
     my $s = {};
     # self status is reliable and stable.
@@ -450,7 +450,7 @@ sub _create_surround_init () {
         my ($ppid_1, $path_1, $stat_1, $stat_2, $path_2, $ppid_2);
         my ($status);
 
-        &$b("==== ppid_1 ==== (${xtimes})");
+        #&$b("==== ppid_1 ==== (${xtimes})");
         $ppid_1 = getppid();
         if ($ppid_1 == 1) {
 	    # parent exited
@@ -461,7 +461,7 @@ sub _create_surround_init () {
 	}
 
 	my $ppid1_linkname = _procexe_linkname($ppid_1);
-	&$b("path_1");
+	#&$b("path_1");
 	$path_1 = readlink($ppid1_linkname);
 	unless (defined $path_1) {
 	    if ($!{ENOENT}) {
@@ -491,7 +491,7 @@ sub _create_surround_init () {
 	    }
 	}
 
-	&$b("stat_1");
+	#&$b("stat_1");
 	$stat_1 = stat($ppid1_linkname);
 	unless (defined $stat_1) {
 	    if ($!{ENOENT}) {
@@ -520,7 +520,7 @@ sub _create_surround_init () {
 	    }
 	}
 
-	&$b("path_2");
+	#&$b("path_2");
 	$path_2 = readlink($ppid1_linkname);
 	unless (defined $path_2) {
 	    if ($!{ENOENT} || $!{EPERM} || $!{EACCES}) {
@@ -531,7 +531,7 @@ sub _create_surround_init () {
         }
 	next if $path_1 ne $path_2;
 
-        &$b("ppid_2");
+        #&$b("ppid_2");
         $ppid_2 = getppid();
         next if $ppid_1 != $ppid_2;
 	die unless $ppid_0 == $ppid_1;
@@ -1079,7 +1079,6 @@ sub suid_emulate( % ) {
 
     #Process::initgroups(sudo_username, sudo_gid);
     my $groups = getgrouplist($sudo_username, $sudo_gid);
-    #print "$groups\n";
     $! = 0; # errors are not cleared in setregid below
     ($GID, $EGID) = ($sudo_gid, "0 $groups");
     if ($! or $GID + 0 != $sudo_gid) {
@@ -1473,8 +1472,10 @@ sub spawn_in_privilege( $$@ ) {
 	POSIX::_exit(1);
     } else {
 	#parent
+	local $SIG{INT} = 'IGNORE';
+	local $SIG{QUIT} = 'IGNORE';
 	$pipe->reader();
-	my $len = $pipe->read($ret, 10485760);
+	my $len = $pipe->read($ret, 1024);
 	if ($len) {
 	    waitpid($pid, 0) == $pid or die("waitpid failed: $!");
 	    chomp $ret;

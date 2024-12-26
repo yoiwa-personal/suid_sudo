@@ -311,6 +311,11 @@ If the `sudo_wrap` option is enabled, the script will execute itself
 with a specific pattern of command line.  Accordingly, `sudo` must be
 configured to match that invocation pattern.
 
+ - If the `use_shebang` is enabled, put something like the
+   following entry:
+
+        user ALL = (root:root) NOPASSWD: /full/path/to/script
+
  - If the `use_shebang` is not enabled, put something like the
    following entry:
 
@@ -324,11 +329,11 @@ configured to match that invocation pattern.
    The options specified for the interpreter shall be the same as that
    specified in the `python_opts` or similar options inside the
    script.
-
- - If the `use_shebang` is enabled, put something like the
-   following entry:
-
-        user ALL = (root:root) NOPASSWD: /full/path/to/script
+ 
+   If `inherit_flags` is enabled, list of options will vary according to
+   various conditions: If `show_sudo_command_line` is enabled, you can
+   see the exact sudoers line to set by calling the script with
+   `--show-sudo-command-line` option.
 
 You can limit _unintentional_ invocation of script explicitly via sudo
 by specifying something like:

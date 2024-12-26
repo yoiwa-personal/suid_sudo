@@ -325,8 +325,6 @@ Ruby.  Differences are:
 
 Its semantics tends to be similar to `system()` in Perl; however,
 
-  * SIGINT/QUIT signals are not ignored (at least currently).
-
   * If exec is failed, it will die instead of setting $? to -1.
 
   * The rest arguments are passed to `exec` of Perl builtin.  However,
@@ -430,7 +428,7 @@ It displays how the script will be re-invoked via sudo, to standard
 error stream (usually a console).
 
 Parameters `use_shebang`, `{python|ruby|perl}_flags`, `inherit_flags`,
-`pass_env` are as same as `suid_emulate()`.
+`pass_env`, `sudo_allow_cached_cred` are as same as `suid_emulate()`.
 
 ### compute_sudo_commane_line_patterns
 
@@ -440,7 +438,7 @@ string for re-invocation pattern, and the second element is one
 used as an entry in `sudoers` file.
 
 Parameters `use_shebang`, `{python|ruby|perl}_flags`, `inherit_flags`,
-`pass_env` are as same as `suid_emulate()`.
+`pass_env`, `sudo_allow_cached_cred` are as same as `suid_emulate()`.
 
 A string given in `user_str` parameter is used for users specification
 in `sudoers` patterns.
