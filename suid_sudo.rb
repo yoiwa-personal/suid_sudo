@@ -1306,46 +1306,63 @@ before actually adding it to /etc/sudoers.
       exception_mode = kwargs.delete(:exception)
     end
     pid, ret, rete, mark = nil
-    IO.pipe(binmode: true) do |r, w|
-      pid = fork do
-        r.close
-        privilege.call()
-        begin
-          exec(*args, **kwargs)
-        rescue SystemCallError => e
-          YAML.dump([e.message, e.errno], w)
-        rescue => e
-          YAML.dump([e.message, nil], w)
-        end
-        w.close
-      end
-      # parent
-      w.close
-      retr = YAML.safe_load(r.read(nil))
-      if retr
-        # error
-        pid_, stat = Process::waitpid2(pid)
-        m, e = retr[0], retr[1]
-        if e
-          raise SystemCallError.new(m, e)
-        else
-          raise SUIDHandlingError.new(m)
-        end
-      else
-        # non-error
-        case mode
-        when :system
-          pid_, stat = Process::waitpid2(pid) # $? set here -> returned to caller
-          succeeded = stat.success?
-          if exception_mode && ! succeeded
-            stat_s = stat.to_s.gsub(/^pid \d+ /, "")
-            raise SUIDSubprocessError.new("Command failed with #{stat_s}: #{args.to_s}")
+
+    
+    orig_int = true
+    orig_quit = true # value not returned from Signal.trap
+
+    begin
+      orig_int = Signal.trap("INT", "SIG_IGN")
+      orig_quit = Signal.trap("QUIT", "SIG_IGN")
+      
+      IO.pipe(binmode: true) do |r, w|
+        pid = fork do
+          r.close
+          Signal.trap("QUIT", orig_quit)
+          Signal.trap("INT", orig_int)
+
+          privilege.call()
+          begin
+            exec(*args, **kwargs)
+          rescue SystemCallError => e
+            YAML.dump([e.message, e.errno], w)
+          rescue => e
+            YAML.dump([e.message, nil], w)
           end
-          return succeeded
-        when :spawn
-          return pid
+          w.close
+          exit!(255)
+        end
+        # parent
+        w.close
+        retr = YAML.safe_load(r.read(nil))
+        if retr
+          # error
+          pid_, stat = Process::waitpid2(pid)
+          m, e = retr[0], retr[1]
+          if e
+            raise SystemCallError.new(m, e)
+          else
+            raise SUIDHandlingError.new(m)
+          end
+        else
+          # non-error
+          case mode
+          when :system
+            pid_, stat = Process::waitpid2(pid) # $? set here -> returned to caller
+            succeeded = stat.success?
+            if exception_mode && ! succeeded
+              stat_s = stat.to_s.gsub(/^pid \d+ /, "")
+              raise SUIDSubprocessError.new("Command failed with #{stat_s}: #{args.to_s}")
+            end
+            return succeeded
+          when :spawn
+            return pid
+          end
         end
       end
+    ensure
+      Signal.trap("QUIT", orig_quit) if orig_quit != true
+      Signal.trap("INT", orig_int) if orig_int != true
     end
   end
 

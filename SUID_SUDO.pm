@@ -1443,11 +1443,16 @@ sub spawn_in_privilege( $$@ ) {
 
     my $pipe = IO::Pipe->new() or die "pipe failed: $!";
 
+    my ($sigint, $sigquit) = ($SIG{INT}, $SIG{QUIT});      # for child to recover
+    local ($SIG{INT}, $SIG{QUIT}) = ('IGNORE', 'IGNORE');  # force restore at error
+
     $pid = fork();
     defined $pid or die "fork failed: $!";
 
     if ($pid == 0) {
 	#child
+	($SIG{INT}, $SIG{QUIT}) = ($sigint, $sigquit);
+
 	$pipe->writer();
 	eval {
 	    &{$priv_proc}();
@@ -1474,8 +1479,6 @@ sub spawn_in_privilege( $$@ ) {
 	POSIX::_exit(1);
     } else {
 	#parent
-	local $SIG{INT} = 'IGNORE';
-	local $SIG{QUIT} = 'IGNORE';
 	$pipe->reader();
 	my $len = $pipe->read($ret, 1024);
 	if ($len) {
