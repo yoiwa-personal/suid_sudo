@@ -1089,7 +1089,7 @@ sub suid_emulate( % ) {
 	die SUIDSetupError("error: setresuid failed");
     }
 
-    my $passed_env = $wrapped_invocation_info->{passed_env};
+    my $passed_env = $wrapped_invocation_info ? $wrapped_invocation_info->{passed_env} : {};
     if ($options{pass_env_to_root}) {
 	_apply_envs($passed_env);
 	$passed_env = {};
@@ -1146,6 +1146,7 @@ sub _set_ids($$$) {
 	# In Perl on POSIX systems, above code calls
 	# setresuid(2) with saved-id = -1,
 	# keeping the root privilege in the saved UID.
+	$! = 0;
 	$REAL_GROUP_ID = $from_g;
 	$! and die SUIDPrivilegesSettingError("_set_ids failed (3-1): $!");
 	$REAL_USER_ID = $from_u;
@@ -1160,6 +1161,7 @@ sub _set_ids($$$) {
 	};
 	$e = $@;
 
+	$! = 0;
 	$EFFECTIVE_USER_ID = $_status->{euid}; # be root to change gids
 	$! and die SUIDPrivilegesSettingError("resoring privilege failed (1): $!");
 	($REAL_GROUP_ID, $EFFECTIVE_GROUP_ID) = @{$restorer->{g}};

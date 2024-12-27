@@ -983,7 +983,9 @@ before actually adding it to /etc/sudoers.
     end
     Process::initgroups(sudo_username, sudo_gid)
 
-    passed_env = wrapped_invocation_info[:passed_env]
+    passed_env = if wrapped_invocation_info
+                 then wrapped_invocation_info[:passed_env]
+                 else {} end
 
     if pass_env_to_root
       _apply_envs(passed_env)

@@ -929,7 +929,7 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
         #    sudo_groups = os.getgrouplist(sudo_username, sudo_gid)
         #    os.setgroups(sudo_groups)
 
-        passed_env = wrapped_invocation_info["passed_env"]
+        passed_env = wrapped_invocation_info["passed_env"] if wrapped_invocation_info else {}
         if pass_env_to_root:
             _apply_envs(passed_env)
             passed_env = {}
