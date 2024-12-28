@@ -101,6 +101,8 @@ Please read F<README.md> for security details.
 =cut
 
 use v5.24;
+use strict;
+
 package SUID_SUDO v0.99.3; # must match with VERSION tag.
 
 ### Exceptions
@@ -186,21 +188,22 @@ our @EXPORT_OK = qw(suid_emulate
                     run_in_subprocess spawn_in_privilege);
 our %EXPORT_TAGS = (all => [@EXPORT_OK]);
 
+# imported modules should be in core distribution and as little as possible.
 use English;
-use strict;
 use POSIX;
 use File::stat;
 use User::grent;
 use User::pwent;
 use Config;
-#use Data::Dumper;
 use File::Spec;
 use IO::Pipe;
 use Carp;
 use MIME::Base64 ();
 
+# not used, delayed loading for smallest-possible footprint
 sub Dumper {
     require Data::Dumper;
+    *Dumper = \&Data::Dumper::Dumper;;
     goto &Data::Dumper::Dumper;
 }
 
@@ -719,7 +722,6 @@ sub _construct_wrap_invoke_cmdline( % ) {
     my $scriptname = _untaint(File::Spec->rel2abs($PROGRAM_NAME));
 
     #my $execname = $EXECUTABLE_NAME;
-    use Config;
     my $execname = $Config{perlpath};
 
     die SUIDSetupError("error: can not reinvoke script: could not found myself")
