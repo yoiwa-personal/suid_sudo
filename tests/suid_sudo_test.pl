@@ -86,11 +86,14 @@ if ($cmd eq "0") {
     };
     print Dumper($ret);
 } elsif ($cmd eq "subproc_e0") {
-    my $ret = run_in_subprocess {
-	drop_privileges_forever;
-	die "child error";
+    my $ret = eval {
+	run_in_subprocess {
+	    drop_privileges_forever;
+	    die "child error, to be propargated";
+	};
     };
-    print Dumper($ret);
+    die unless $@;
+    print Dumper($@);
 } elsif ($cmd eq "system") {
     print spawn_in_privilege("system", "drop_privileges_forever", "id")
 } elsif ($cmd eq "system_ref") {

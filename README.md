@@ -28,7 +28,7 @@ Functions/Features available:
  - Privilege control
  - Helpers for executing unprivileged codes/sub-processes
 
-Python 2.7.13 or later, or 3.5.13 or later is required.
+Python 3.5.13 or later is required.
 Ruby 2.3 or later is required.
 Perl 5.24.1 or later is required.
 

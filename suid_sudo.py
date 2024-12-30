@@ -1202,6 +1202,7 @@ def call_in_subprocess(func, *args, **kwargs):
     """
 
     (rp, wp) = os.pipe()
+    # todo: check rp > 2 ... closing sys.std* does not release fds
     if _ispython2:
         # O_CLOEXEC flag is set in Python 3 only.
         for p in (rp, wp):

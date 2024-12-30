@@ -1220,6 +1220,7 @@ before actually adding it to /etc/sudoers.
 
     pid, ret, rete, mark = nil
     IO.pipe(binmode: true) do |r, w|
+      # todo: check r.fileno > 2 ... closing $std* does not release fds
       pid = fork do
         r.close
         ret = nil

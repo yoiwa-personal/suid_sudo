@@ -196,7 +196,6 @@ use User::grent;
 use User::pwent;
 use Config;
 use File::Spec;
-use IO::Pipe;
 use Carp;
 use MIME::Base64 ();
 
@@ -1252,6 +1251,40 @@ sub drop_privileges_forever ( ;& ) {
 
 ### Running (untrusted) code within subprocess
 
+sub _safe_pipe(\$\$) {
+    #avoid fd 0, 1, 2 for pipe
+    my ($in, $out);
+    if (!pipe($in, $out)) {
+	return 0;
+    }
+
+    my @save = ();
+    for $a ([\$in, "<"], [\$out, ">"]) {
+	my ($fhref, $dir) = @$a;
+	my ($fh) = $$fhref;
+	for my $loop (0 .. 2) {
+	    if ($fh->fileno < 3) {
+		push @save, $fh;
+		my $new;
+		open($new, "$dir&", $fh) or die "safe_pipe: dup failed: $!";
+		$$fhref = $fh = $new;
+	    } else {
+		last;
+	    }
+	}
+    }
+
+    for $_ (@save) {
+	close $_ or die "safe_pipe: can't close duped original: $!";
+    }
+
+    ${$_[0]} = $in;
+    ${$_[1]} = $out;
+
+    return 1;
+}
+
+
 =pod
 
 =head2 run_in_subprocess { block }
@@ -1273,29 +1306,22 @@ spawn_in_privilege() in this module.
 =cut
 
 sub run_in_subprocess( & ) {
-    eval {
-	require JSON;
-    };
-    if ($@) {
-	eval {
-	    package JSON;
-	    use JSON::PP;
-	};
-	die if $@;
-    }
+    require JSON::PP;
 
     my ($proc) = @_;
 
     my ($pid, $ret, $rete, $json) = undef;
 
-    my $pipe = IO::Pipe->new() or die "pipe failed: $!";
+    my ($reader, $writer);
+
+    _safe_pipe ($reader, $writer) or die "pipe failed: $!";
 
     $pid = fork();
     defined $pid or die "fork failed: $!";
 
     if ($pid == 0) {
 	#child
-	$pipe->writer();
+	close $reader;
 
 	eval {
 	    $ret = &$proc();
@@ -1306,25 +1332,25 @@ sub run_in_subprocess( & ) {
 	    $rete = "$@";
 	}
 	eval {
-	    $json = JSON::encode_json([$ret,$rete]);
+	    $json = JSON::PP::encode_json([$ret,$rete]);
 	};
 	if ($@) {
-	    $json = JSON::encode_json([undef,"$@"]);
+	    $json = JSON::PP::encode_json([undef,"$@"]);
 	}
-	print $pipe $json;
-	$pipe->flush();
+	print $writer $json;
+	$writer->flush();
 	POSIX::_exit(0);
     } else {
 	#parent
-	$pipe->reader();
-	my $len = $pipe->read($json, 10485760);
-	$len or die SUIDHandlingError->new("run_in_subprocess: error reading from subprocess");
+	close $writer;
+	my $len = $reader->read($json, 10485760);
+	$len or die SUID_SUDO::SUIDHandlingError->new("run_in_subprocess: error reading from subprocess");
 	waitpid($pid, 0) == $pid or die("waitpid failed: $!");
-	$? != 0 and die SUIDHandlingError->new("run_in_subprocess: subprocess exited with status != 0");
+	$? != 0 and die SUID_SUDO::SUIDHandlingError->new("run_in_subprocess: subprocess exited with status != 0");
 	eval {
-	    ($ret, $rete) = @{JSON::decode_json($json)};
+	    ($ret, $rete) = @{JSON::PP::decode_json($json)};
 	};
-	$@ and die SUIDHandlingError->new("run_in_subprocess: value passing failed: $@");
+	$@ and die SUID_SUDO::SUIDHandlingError->new("run_in_subprocess: value passing failed: $@");
 	if ($rete) {
 	    die $rete;
 	} else {
@@ -1443,7 +1469,11 @@ sub spawn_in_privilege( $$@ ) {
 
     my ($pid, $ret, $rete, $json) = undef;
 
-    my $pipe = IO::Pipe->new() or die "pipe failed: $!";
+    my ($rdpipe, $wrpipe);
+    {
+	local $SYSTEM_FD_MAX = 0;
+	_safe_pipe($rdpipe, $wrpipe)  or die "pipe failed: $!";
+    }
 
     my ($sigint, $sigquit) = ($SIG{INT}, $SIG{QUIT});      # for child to recover
     local ($SIG{INT}, $SIG{QUIT}) = ('IGNORE', 'IGNORE');  # force restore at error
@@ -1455,7 +1485,7 @@ sub spawn_in_privilege( $$@ ) {
 	#child
 	($SIG{INT}, $SIG{QUIT}) = ($sigint, $sigquit);
 
-	$pipe->writer();
+	close $rdpipe;
 	eval {
 	    &{$priv_proc}();
 
@@ -1476,13 +1506,14 @@ sub spawn_in_privilege( $$@ ) {
 	    # should not happen
 	    $ret = "$@";
 	}
-	print $pipe $ret, "\n";
-	$pipe->flush();
+	print $wrpipe $ret, "\n";
+	$wrpipe->flush();
+	close $wrpipe;
 	POSIX::_exit(1);
     } else {
 	#parent
-	$pipe->reader();
-	my $len = $pipe->read($ret, 1024);
+	close $wrpipe;
+	my $len = $rdpipe->read($ret, 1024);
 	if ($len) {
 	    waitpid($pid, 0) == $pid or die("waitpid failed: $!");
 	    chomp $ret;
