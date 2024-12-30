@@ -190,7 +190,7 @@ our %EXPORT_TAGS = (all => [@EXPORT_OK]);
 
 # imported modules should be in core distribution and as little as possible.
 use English;
-use POSIX;
+use POSIX ();
 use File::stat;
 use User::grent;
 use User::pwent;
@@ -1253,37 +1253,27 @@ sub drop_privileges_forever ( ;& ) {
 
 sub _safe_pipe(\$\$) {
     #avoid fd 0, 1, 2 for pipe
-    my ($in, $out);
-    if (!pipe($in, $out)) {
+    my @save = ();
+    my ($rd, $wr) = POSIX::pipe();
+    unless ($rd || $wr) {
+	warn "safe_pipe; can't create pipe: $!";
 	return 0;
     }
-
-    my @save = ();
-    for $a ([\$in, "<"], [\$out, ">"]) {
-	my ($fhref, $dir) = @$a;
-	my ($fh) = $$fhref;
-	for my $loop (0 .. 2) {
-	    if ($fh->fileno < 3) {
-		push @save, $fh;
-		my $new;
-		open($new, "$dir&", $fh) or die "safe_pipe: dup failed: $!";
-		$$fhref = $fh = $new;
-	    } else {
-		last;
-	    }
-	}
+    while ($rd < 3) {
+	push @save, $rd;
+	$rd = POSIX::dup($rd) or die "safe_pipe; can't dup handle: $!";
     }
-
+    while ($wr < 3) {
+	push @save, $wr;
+	$wr = POSIX::dup($wr) or die "safe_pipe; can't dup handle: $!";
+    }
     for $_ (@save) {
-	close $_ or die "safe_pipe: can't close duped original: $!";
+	POSIX::close($_) or die "safepipe: can't close duped original: $!";
     }
-
-    ${$_[0]} = $in;
-    ${$_[1]} = $out;
-
+    open(${$_[0]}, "<&=", $rd) or die "safepipe: can't create Perl handle for reading";
+    open(${$_[1]}, ">&=", $wr) or die "safepipe: can't create Perl handle for writing";
     return 1;
 }
-
 
 =pod
 
