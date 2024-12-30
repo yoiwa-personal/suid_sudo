@@ -1220,7 +1220,9 @@ before actually adding it to /etc/sudoers.
 
     pid, ret, rete, mark = nil
     IO.pipe(binmode: true) do |r, w|
-      # todo: check r.fileno > 2 ... closing $std* does not release fds
+      # todo: check r.fileno > 2 ...
+      # unlikely in ruby, because stdio is filled by dummy pipes
+      # when unavailable; see fill_standard_fds() in ruby.c
       pid = fork do
         r.close
         ret = nil
@@ -1317,6 +1319,7 @@ before actually adding it to /etc/sudoers.
       orig_quit = Signal.trap("QUIT", "SIG_IGN")
       
       IO.pipe(binmode: true) do |r, w|
+        # todo: check r.fileno > 2 ... see call_in_subprocess
         pid = fork do
           r.close
           Signal.trap("QUIT", orig_quit)

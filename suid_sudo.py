@@ -1165,6 +1165,24 @@ class SafeUnpickler(_UP,object):
                 # NEWOBJ_EX
                 self.dispatch[v] = self._disabled_instruction(v)
 
+# process communication
+
+def _safe_pipe():
+    """os.pipe, except avoiding fds 0, 1, 2 to use."""
+    # the corner case happens when fd 0, 1, or 2 are closed at interpreter invocation.
+    saved = []
+    rd, wr = os.pipe()
+    while (rd < 3):
+        saved.append(rd)
+        rd = os.dup(rd)
+    while (wr < 3):
+        saved.append(wr)
+        wr = os.dup(wr)
+    print(repr([rd, wr, saved]), file=sys.stderr)
+    for f in saved:
+        os.close(f)
+    return (rd, wr)
+
 def call_in_subprocess(func, *args, **kwargs):
     """call the given function within a forked subprocess.
 
@@ -1201,8 +1219,7 @@ def call_in_subprocess(func, *args, **kwargs):
 
     """
 
-    (rp, wp) = os.pipe()
-    # todo: check rp > 2 ... closing sys.std* does not release fds
+    (rp, wp) = _safe_pipe()
     if _ispython2:
         # O_CLOEXEC flag is set in Python 3 only.
         for p in (rp, wp):
