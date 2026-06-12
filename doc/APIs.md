@@ -133,7 +133,7 @@ All arguments are optional and these meanings are as follows:
  * env_pass:
  
    default []; list of names of environment variables which passed the
-   wrapped command.  Effective only with sudo_wrap=True.  By default,
+   wrapped command.  Effective only with `sudo_wrap=True`.  By default,
    the passed environment variables are only visible when the user
    privilege is set by either `temporarily_as_user` or
    `drop_privileges_forever`.
@@ -147,6 +147,11 @@ All arguments are optional and these meanings are as follows:
    hole.  This option can bypass security measures provided by sudo,
    if the script really tells this module to do so.  Use this feature
    only when it is really needed.
+
+   Note: when this option is used, you have to use
+   privilege-switching functions provided with this module.
+   Otherwise, the environment is not rewritten properly
+   (unless `env_pass_to_root` below is also specified).
 
  * env_pass_to_root: default False; setting this to True will
    make the effect of above `env_pass` also for the root privilege.
