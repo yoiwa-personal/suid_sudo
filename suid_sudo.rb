@@ -161,9 +161,12 @@ module SUID_SUDO
         end
       }
     end
-    IS_RUBY2 = RUBY_VERSION =~ /\A[12]\./
-    IS_RUBY2_7 = RUBY_VERSION =~ /\A2\.7\./
-    if IS_RUBY2
+
+    RUBYVER = (RUBY_VERSION.split(".").take(3).map.with_index {|x, i| x.to_i * 1000 ** (2 - i)}.inject(0, :+))
+
+    IS_RUBY_PRE2_7 = RUBYVER < 2007000
+    IS_RUBY2_7 = RUBYVER >= 2007000
+    if IS_RUBY_PRE2_7
       def _untaint(o)
         o.dup.untaint
       end
@@ -630,7 +633,7 @@ module SUID_SUDO
     re = proc { |x|
       unless done[x]
         done[x] = true
-        if x == 'T' && !IS_RUBY2
+        if x == 'T' && !IS_RUBY_PRE2_7
           l << '--disable=rubyopt'
         else
           l << "-#{x}"
@@ -641,7 +644,7 @@ module SUID_SUDO
       re.(x)
     }
     if inherit_flags
-      re.("T") if $SAFE > 0
+      re.("T") if IS_RUBY_PRE2_7 && $SAFE > 0
     end
     return l
   end
@@ -838,7 +841,7 @@ before actually adding it to /etc/sudoers.
   #
   # [realroot_ok]
   #
-  #  default False. Specify whether the script can be invoked as real
+  #  default false. Specify whether the script can be invoked as real
   #  root user (via sudo by root).
   #
   # [nonsudo_ok]
@@ -893,12 +896,48 @@ before actually adding it to /etc/sudoers.
   #  if the script really tells this module to do so.  Use this
   #  feature only when it is really needed.
   #
+  # [pass_env_to_root]
+  #
+  #  default false; if false (as default), environmental variables
+  #  passed via pass_env is only visible with user's privilege. More
+  #  precisely, these are set to the environment when either
+  #  "temporarily_as_user" or "drop_privileges_forever" is called ,
+  #  and reverted to original value if returned to the root privilege.
+  #
+  #  If set to true, the passed values are simply set upon call to
+  #  "suid_emulate", and effective with both root and user's
+  #  privileges.
+  #
+  # [sudo_allow_cached_cred]
+  #
+  #  default false;
+  #
+  #   * if false, the password or other credentials of the calling user
+  #     will always be asked for reauthentication, ignoring any cached
+  #     statuses, unless the "sudoers" is properly configured for the
+  #     script with "NOPASSWD" setting. It is done by passing "-k" option
+  #     to sudo.
+  #
+  #     This avoids accidental invocation of scripts using this module by
+  #     the users commonly using "sudo". Note that this is just foor a
+  #     fool-proof safety or accident-avoiding and not for true security
+  #     protection; if some attackers can tricks users to run any command
+  #     accidentally, they can simply run sudo to take the root privilege.
+  #
+  #   * Furthermore, if this is set to -1, it will force sudo not to ask
+  #     any credentials and just abort the execution, unless "NOPASSWD"
+  #     setting is properly configured. It is done by passing "-k -n"
+  #     options to sudo.
+  #
+  #   * On the contrary, if it is set to 1 or other true values, it allows
+  #     sudo to use any cached credentials for authentication bypass.
+  #
   # [showcmd_opts]
   #
-  # default nil: if a string is given, this function will compare it
-  # with first command-line argument.  If it matches, it shows the
-  # command line for the re-invocation and exit.  If "True" is passed,
-  # it is treated as if it were "--show-sudo-command-line".
+  #  default nil: if a string is given, this function will compare it
+  #  with first command-line argument.  If it matches, it shows the
+  #  command line for the re-invocation and exit.  If "True" is passed,
+  #  it is treated as if it were "--show-sudo-command-line".
 
   def suid_emulate(realroot_ok:false, nonsudo_ok:false,
                    sudo_wrap:false, use_shebang:false,
