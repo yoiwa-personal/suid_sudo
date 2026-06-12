@@ -849,6 +849,47 @@ def suid_emulate(realroot_ok=False, nonsudo_ok=False,
             provided by sudo, if the script really tells this module
             to do so.  Use this feature only when it is really needed.
 
+        pass_env_to_root:
+
+            default False; by default, environmental variables passed
+            via "pass_env" is only visible with user's privilege. More
+            precisely, these are set to the environment when either
+            "temporarily_as_user" or "drop_privileges_forever" is
+            called , and reverted to original value if returned to the
+            root privilege.
+
+            If set to true, the passed values are simply set upon call
+            to "suid_emulate", and effective with both root and user's
+            privileges.
+
+        sudo_allow_cached_cred
+
+            default false;
+
+            * if false, the password or other credentials of the
+              calling user will always be asked for reauthentication,
+              ignoring any cached statuses, unless the "sudoers" is
+              properly configured for the script with "NOPASSWD"
+              setting. It is done by passing "-k" option to sudo.
+
+              This avoids accidental invocation of scripts using this
+              module by the users commonly using "sudo". Note that
+              this is just foor a fool-proof safety or
+              accident-avoiding and not for true security protection;
+              if some attackers can tricks users to run any command
+              accidentally, they can simply run sudo to take the root
+              privilege.
+
+            * Furthermore, if this is set to integer -1, it will force
+              sudo not to ask any credentials and just abort the
+              execution, unless "NOPASSWD" setting is properly
+              configured. It is done by passing "-k -n" options to
+              sudo.
+
+            * On the contrary, if it is set to True or 1, values, it
+              allows sudo to use any cached credentials for
+              authentication bypass.
+
         showcmd_opts:
 
             default None; if a string is given, this function will

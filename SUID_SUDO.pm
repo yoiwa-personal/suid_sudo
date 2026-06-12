@@ -976,6 +976,51 @@ This option can bypass security measures provided by sudo, if the
 script really tells this module to do so.  Use this feature only when
 it is really needed.
 
+=item pass_env_to_root:
+
+default false; if false (as default), environmental variables passed
+via pass_env is only visible with user's privilege.  More precisely,
+these are set to the environment when either C<temporarily_as_user> or
+C<drop_privileges_forever> is called , and reverted to original value
+if returned to the root privilege.
+
+If set to true, the passed values are simply set upon call to
+C<suid_emulate>, and effective with both root and user's privileges.
+
+=item sudo_allow_cached_cred
+
+default false;
+
+=over 2
+
+=item *
+
+if false, the password or other credentials of the
+calling user will always be asked for reauthentication, ignoring any
+cached statuses, unless the C<sudoers> is properly configured for the
+script with C<NOPASSWD> setting.  It is done by passing C<-k> option
+to sudo.
+
+This avoids accidental invocation of scripts using this module by the
+users commonly using C<sudo>.  Note that this is just for a
+fool-proof safety or accident-avoiding and not for true security
+protection; if some attackers can trick users to run any command
+accidentally, they can simply run sudo to take the root privilege.
+
+=item *
+
+Furthermore, if this is set to C<-1>, it will force sudo not to ask
+any credentials and just abort the execution, unless C<NOPASSWD>
+setting is properly configured.  It is done by passing C<-k -n>
+options to sudo.
+
+=item *
+
+On the contrary, if it is set to 1 or other true values,
+it allows sudo to use any cached credentials for authentication bypass.
+
+=back
+
 =item showcmd_opts:
 
 default false; if set to a string, it will be compared with the
@@ -1227,7 +1272,7 @@ sub temporarily_as_real_root ( ;& ) {
     _set_ids(1, 1, $_[0])
 }
 
-=head2 temporarily_as_real_root [{ block }]
+=head2 drop_privileges_forever [{ block }]
 
 Set both real and effective user/group ID to an ordinary user,
 dropping any privilege for all of the future.  After calling this, the
