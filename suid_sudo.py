@@ -1148,13 +1148,14 @@ try:
     _UP = pickle._Unpickler
     # use "unoptimized" picker for more restrictive behavior
 except AttributeError:
+    raise "no pure-Python unpickler found"
     _UP = pickle.Unpickler
 
 class SafeUnpickler(_UP,object):
 
     safe_classes = {
         "builtins": {'range', 'complex', 'set', 'frozenset', 'slice',
-                     'Exception', 'BaseException'},
+                     'Exception', 'BaseException', 'bytearray', 'Ellipsis'},
         "__builtin__": {'range', 'complex', 'set', 'frozenset', 'slice'}, #PY2
         "collections": {'OrderedDict', 'defaultdict'},
         "datetime": {'date', 'time', 'datetime', 'timedelta', 'tzinfo', 'timezone'},
@@ -1171,7 +1172,7 @@ class SafeUnpickler(_UP,object):
         if (module in safe_classes and
             name in safe_classes[module]):
             return True
-        if (module == ("builtins" if not _ispython2 else "exceptions")
+        if (module == "builtins"
             and name.endswith("Error")):
             return True
         return False
@@ -1192,19 +1193,45 @@ class SafeUnpickler(_UP,object):
     def get_extension(self, code):
         raise pickle.UnpicklingError("extension is forbidden")
 
-    def _disabled_instruction(self, c):
+    def _disabled_instruction(c):
         def e(*s):
-            raise pickle.UnpicklingError("encountered disabled instruction %r" % c)
+            import pickletools
+            s = pickletools.code2op.get(chr(c))
+            if s:
+                s = s.name
+            else:
+                s = repr(chr(c))
+            raise pickle.UnpicklingError("encountered disabled instruction %s" % s)
         return e
+
+    try:
+        dispatch = _UP.dispatch.copy()
+    except:
+        raise("no method found for limiting pickler")
+
+    for v in dispatch.keys():
+        if not v in (
+                        b'\x80.'               # PROTO, STOP
+                        b'\x94ghjpqr'          # MEMOIZE, GET, PUT
+                        b'\x95('               # FRAME, MARK
+                        b'IJKML\x8a\x8b'       # INT
+                        b'\x88\x89N'           # BOOL, NONE
+                        b'FG'                  # FLOAT
+                        b']ael'                # LIST, APPEND, appends
+                        b')\x85\x86\x87t'      # TUPLE
+                        b'}su'                 # DICT
+                        b'V\x8c\x8dX'          # UNICODE
+                        b'BC\x8e'              # BINBYTES
+                        b'\x96'                # BYTEARRAY
+                        b'STU'                 # old strings
+                        b'\x8f\x90\x91'        # SET
+                        b'Rc\x93'              # REDUCE, GLOBAL:
+                                               #   see safe_classes above
+                ):
+            dispatch[v] = _disabled_instruction(v)
 
     def __init__(self, *args, **kwargs):
         super(SafeUnpickler, self).__init__(*args, **kwargs)
-        if getattr(self, "dispatch"):
-            for v in b'01PQio\x81\x92':
-                # POP, POP_MARK, PERSID, BINPERSID,
-                # BUILD, INST, OBJ, NEWOBJ,
-                # NEWOBJ_EX
-                self.dispatch[v] = self._disabled_instruction(v)
 
 # process communication
 
