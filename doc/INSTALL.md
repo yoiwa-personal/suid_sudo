@@ -1,88 +1,66 @@
 [-]: # " -*- mode: gfm; coding: utf-8 -*- "
 
-# Installation instruction for suid_sudo
+# Installation Instructions for suid_sudo
 
-## Package-based installation
+## Package-Based Installation
 
-Please notice that the packages should be installed into the
-system-wide package installation.  This module will invoke the script
-via sudo, which may change the library search paths.
+Please note that packages should be installed into the system-wide package directory. This module invokes scripts via `sudo`, which may alter library search paths.
 
-If it is not possible, please consider per-program installation below.
+If system-wide installation is not possible, consider the per-program installation methods described below.
 
 ### Python
 
-Run `python3 setup.py bdist_egg` (or python2).
-It will generate a egg file inside the `dist` directory.
+Run `python3 setup.py bdist_egg` (or Python 2).
+This will generate an `.egg` file inside the `dist` directory.
 
 ### Ruby
 
-Run `gem build suid_sudo.gemspec`.  It will generate a gem file at
-the top directory.
+Run `gem build suid_sudo.gemspec`. This will generate a `.gem` file in the root directory.
 
-### Python
+### Perl
 
-Run `perl Makefile.PL` then `make dist`.  It will generate a tar.gz
-package file at the top directory.
+Run `perl Makefile.PL` followed by `make dist`. This will generate a `.tar.gz` package file in the root directory.
 
-## Manual system-wide installation
+## Manual System-Wide Installation
 
-The module files `suid_sudo.py`, `suid_sudo.rb`, `SUID_SUDO.pm` are
-self-contained.
-Put each of these files into the language's system library path.
+The module files `suid_sudo.py`, `suid_sudo.rb`, and `SUID_SUDO.pm` are self-contained.
+Copy the relevant file into your language's system library search path.
 
-The notice above on the system-wide installation about user's local
-installation will apply, too.
+The note above regarding system-wide versus user-local installation also applies here.
 
-## Per-program inclusion
+## Per-Program Inclusion
 
-### For multi-file programs
+### For Multi-File Programs
 
-Each of these module files (shown above) may be copied into the
-directory where your program package lives.  Library search paths of
-underlying scripting language should be *carefully* modified before
-loading this module, using an absolute path specification (or, at
-least, an absolute path computed relatively from the main script's
-location).  *NEVER add the current directory (".") to the library
-path, which will lead to root exploits!*
+You can copy the relevant module file into the directory where your application package resides. The library search path of the underlying scripting language must be *carefully* modified before loading this module, using an absolute path specification (or an absolute path derived relative to the main script's location).
 
- * In Python, the system will introduce the directory containing the
-   invoked script into the load path.  This setting is sufficient for
-   most cases. This module re-invokes the script via sudo with an
-   absolute path, so such loading paths will also become absolute.
+*NEVER add the current working directory (`"."`) to the library search path, as doing so introduces critical privilege escalation risks!*
 
- * In Ruby,
+ * **Python:** The runtime automatically adds the directory containing the executed script to `sys.path`. This default behavior is sufficient for most cases. Because this module re-invokes the script via `sudo` using an absolute path, the loaded path will also become absolute.
+
+ * **Ruby:** Using the following snippet is recommended:
 
         require File.absolute_path("./suid_sudo", File.dirname(__FILE__)).untaint
 
-   is useful.
+   Note: The built-in `require_relative` function does not work in taint mode, although that is what we need.
 
-   The builtin `require_relative` does not work in taint mode,
-   although it is what we actually need.
+ * **Perl:** Refer to the documentation for the `FindBin` package.
 
- * In Perl, see FindBin package's documentation.
-
-   Use of the taint mode (perl -T) is strongly encouraged to avoid
-   loading any module from the current directory; otherwise, either
-   require Perl 5.26 or higher, or put
+   Using taint mode (`perl -T`) is strongly encouraged to prevent loading modules from the current working directory. Otherwise, require Perl 5.26 or higher, or add:
 
         BEGIN { pop @INC if $INC[-1] eq '.'; }
 
    before calling `use` for any modules.
 
-You can also consider "zip-based" solutions described below.
+You may also consider the zip-based application solutions described below.
 
-### For single-file programs
+### For Single-File Programs
 
-If you're using Python, use of `zipapp` built-in module is highly
-recommended for this purpose.
+For Python, using the built-in `zipapp` module is highly recommended.
 
-For Ruby and Perl, embedding the module to a main script is not 
-advised (as it is too long), but if you really need to do so,
-please clearly mark the copied part of this module.
+For Ruby and Perl, embedding the module directly into a main script is not recommended due to file length. However, if necessary, clearly comment and delineate the embedded module code.
 
-Alternatively, you can try 
-[ziprubyapp](https://github.com/yoiwa-personal/ziprubyapp) and
+Alternatively, consider using:
+[ziprubyapp](https://github.com/yoiwa-personal/ziprubyapp) or
 [zipperlapp](https://github.com/yoiwa-personal/zipperlapp),
-which we have implemented as an equivalent of Python's zipapp for
-Ruby and Perl.
+which provide `zipapp`-equivalent functionality for Ruby and Perl.

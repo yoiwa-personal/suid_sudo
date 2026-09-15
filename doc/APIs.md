@@ -2,340 +2,235 @@
 
 # API functions of suid_sudo module
 
-Some constants (e.g. `True` / `true`, `False` / `false`) will have
-different symbols between Python and Ruby.  Please read it according
-to each language.
+Some constants (e.g., `True` / `true`, `False` / `false`) have different syntax between Python, Ruby, and Perl. Please adapt the examples according to each language.
 
-In Perl, keyword arguments should be passed as a string-named hash,
-and truth values are treated according to usual language semantics.
-For example, you can write as:
+In Perl, keyword arguments should be passed as a string-named hash, and truth values follow standard Perl semantics.
+For example:
 
     suid_emulate(use_shebang => 1);
 
 ## Loading
 
-In Python,
+In Python:
 
     import suid_sudo
 
-will import `suid_sudo` module.
+will import the `suid_sudo` module.
 
     from suid_sudo import *
 
-will import all public APIs below to the current module, useful for
-short scripts.
+will import all public APIs listed below into the current namespace, which is useful for short scripts.
 
-In Ruby, use of
+In Ruby:
 
     require 'suid_sudo'
 
-will load `SUID_SUDO` module. (capitalized for Ruby constant.)
+will load the `SUID_SUDO` module (capitalized as a Ruby constant).
 
-If you want to use it without module prefix, write:
+If you want to use functions without the module prefix, write:
 
     require 'suid_sudo'
     include SUID_SUDO::INCLUDE
 
-(Direct inclusion of `SUID_SUDO` module will import many internal
-private symbols.)
+(Note: Direct inclusion of `SUID_SUDO` will import many internal private symbols.)
 
-in Perl,
+In Perl:
 
     use SUID_SUDO;
 
-will load the module into the SUID_SUDO package.
+will load the module into the `SUID_SUDO` package.
 
     use SUID_SUDO ":all";
 
-will also import API functions into current package context.
+will import API functions into the current package context.
 
-## Set-up Routine
+## Setup Routine
 
 ### suid_emulate
 
-Emulate behavior of set-uid binary when invoked via sudo(1).
+Emulates the behavior of a setuid binary when invoked via `sudo(1)`.
 
-This function is to be invoked as early as possible in the script
-intended to be invoked via sudo.
+This function should be called as early as possible in any script intended to be run via `sudo`.
 
-It detects whether the user invoking the script via sudo, and set real
-uid and real gid appropriately.  In more detail,
+It detects whether the script was invoked via `sudo` and sets the real UID and GID appropriately:
 
- * Real user ID and real group ID are set to that of invoking users,
-   obtained from the environmental variables set by SUDO.
- * Effective User ID and Group ID are set to root.
- * Secondary group list is initialized to the default setting of
-   invoking users.  (`Sudo` set it to root, but it is not usually what
-   people wants.  Unfortunately, it is hard to reset it to that before
-   the `sudo` invoked.)
+ * Real user ID and real group ID are set to those of the invoking user, obtained from environment variables set by `sudo`.
+ * Effective user ID and group ID are set to `root`.
+ * The supplementary group list is initialized to the default settings of the invoking user. (`sudo` sets this to `root`, which is usually unintended. Unfortunately, resetting it to the state prior to `sudo` invocation is difficult.)
 
-The function returns true when setuid is effective (either natively or
-by emulation): false otherwise (invoked directly as either root or a
-non-root user).
+The function returns `true` when setuid emulation is active (either natively or via emulation), and `false` otherwise (if invoked directly as either root or an unprivileged user).
 
-All arguments are optional and these meanings are as follows:
+All arguments are optional:
 
- * realroot_ok: default False. Specify whether the script can be
-   invoked as real root user (via sudo by root).
+ * `realroot_ok`: default `False`. Specifies whether the script can be invoked as the real `root` user (via `sudo` run by `root`).
 
- * nonsudo_ok: default False. Specify whether the script can be
-   invoked by root user without sudo.  When enabled, misconfiguration
-   might open security holes to ordinary users; _be extremely careful_
-   and _do not use unless really required_; root users can still use
-   script using this module by `realroot_ok`option above and
-   invocation via explicit `sudo`.
+ * `nonsudo_ok`: default `False`. Specifies whether the script can be invoked by the `root` user without `sudo`. When enabled, misconfiguration might open security vulnerabilities to ordinary users; *be extremely careful* and *do not use unless strictly necessary*. Root users can still run scripts using this module via the `realroot_ok` option and explicit `sudo` invocation.
 
- * sudo_wrap: default False. If set to True, the script will try to
-   invoke itself via sudo(1), when root privilege is not available.
-   Sudo must be configured appropriately so that required ordinary
-   users can invoke this script (by its full-path with python
-   command).
+ * `sudo_wrap`: default `False`. If set to `True`, the script will attempt to re-invoke itself via `sudo(1)` when root privileges are not available. `sudo` must be configured properly so that targeted ordinary users can invoke the script (by its full path along with the interpreter command).
 
-   A special command-line argument is used to communicate between
-   invoking/self-invoked scripts, thus the function MUST be called
-   before any command-line processing (e.g. argparse in Python).
+   A special command-line argument is used to coordinate between the invoking and self-invoked scripts; therefore, this function MUST be called before any command-line parsing (e.g., `argparse` in Python).
 
- * use_shebang: default False; only meaningful when sudo_wrap=True.
-   If set to True, the module will directly invoke the script itself
-   as an executable, expecting "#!" feature of the underlying
-   operating system to work.
+ * `use_shebang`: default `False`; only meaningful when `sudo_wrap=True`.
+   If set to `True`, the module will directly invoke the script as an executable, relying on the `#!` feature of the underlying operating system.
 
-   Use of this flag requires changes to the sudo configuration.
+   Enabling this flag requires adjustments to the `sudo` configuration.
 
- * python_flags: (Python only) default "I"; only meaningful when
-   sudo_wrap=True and use_shebang=False.  A string containing
-   one-character flags to be passed to the python interpreter called
-   when sudo_wrap=True.
+ * `python_flags`: (Python only) default `"I"`; only meaningful when `sudo_wrap=True` and `use_shebang=False`. A string containing single-character flags passed to the Python interpreter when `sudo_wrap=True`.
 
-   In Python 2.7, "I" flag will be translated to combination
-   "-E -s" flags.
+   In Python 2.7, the `"I"` flag is translated to the combination `-E -s`.
 
- * ruby_flags: (Ruby only) default "T"; only meaningful when
-   sudo_wrap=True and use_shebang=False.  A string containing
-   one-character flags to be passed to the Ruby interpreter called
-   when sudo_wrap=true.
+ * `ruby_flags`: (Ruby only) default `"T"`; only meaningful when `sudo_wrap=True` and `use_shebang=False`. A string containing single-character flags passed to the Ruby interpreter when `sudo_wrap=True`.
    
-   In Ruby 3.0 and above, the "T" flag will be translated to
-   "-disable=rubyopt" option.  When using Ruby 2.7 and a warning
-   message for "-T deprecation" is clumsy, set this to "" with extra
-   cautions on programming.
+   In Ruby 3.0 and later, the `"T"` flag is translated to `-disable=rubyopt`. In Ruby 2.7, if deprecation warnings for `-T` are undesirable, set this to `""` with extra caution given to code safety.
 
- * perl_flags: (Perl only) default "T"; only meaningful when
-   sudo_wrap=True and use_shebang=False.  A string containing
-   one-character flags to be passed to the Ruby interpreter called
-   when sudo_wrap=true.
+ * `perl_flags`: (Perl only) default `"T"`; only meaningful when `sudo_wrap=True` and `use_shebang=False`. A string containing single-character flags passed to the Perl interpreter when `sudo_wrap=True`.
 
- * inherit_flags: default False; only meaningful when sudo_wrap=True
-   and use_shebang=False.  If set to True, it will pass some of the
-   flags originally passed to the Python/Ruby/Perl interpreter.
-   It's always safer to specify explicitly using *_flags option.
+ * `inherit_flags`: default `False`; only meaningful when `sudo_wrap=True` and `use_shebang=False`. If set to `True`, it passes select flags originally supplied to the interpreter. It is always safer to specify flags explicitly using the `*_flags` options.
 
- * env_pass:
+ * `env_pass`:
  
-   default []; list of names of environment variables which passed the
-   wrapped command.  Effective only with `sudo_wrap=True`.  By default,
-   the passed environment variables are only visible when the user
-   privilege is set by either `temporarily_as_user` or
-   `drop_privileges_forever`.
+   default `[]`; a list of environment variable names passed to the wrapped command. Effective only with `sudo_wrap=True`. By default, passed environment variables are visible only when user privileges are explicitly set via `temporarily_as_user` or `drop_privileges_forever`.
    
-   Technically, its value is encoded to special environmental
-   variable; it exploits the fact that sudo passes all variables
-   starts with "LC_".
+   Technically, these values are encoded into special environment variables, exploiting the fact that `sudo` preserves environment variables starting with `LC_`.
 
-   *Caution*: passing some system-defined variables such as IFS,
-   LD_PRELOAD, LD_LIBRARY_PATH will lead to creation of a security
-   hole.  This option can bypass security measures provided by sudo,
-   if the script really tells this module to do so.  Use this feature
-   only when it is really needed.
+   *Caution*: Passing certain system environment variables, such as `IFS`, `LD_PRELOAD`, or `LD_LIBRARY_PATH`, can introduce severe security vulnerabilities. This option bypasses security measures provided by `sudo` if configured to do so. Use this feature only when strictly required.
 
-   Note: when this option is used, you have to use
-   privilege-switching functions provided with this module.
-   Otherwise, the environment is not rewritten properly
-   (unless `env_pass_to_root` below is also specified).
+   Note: When using this option, you must use the privilege-switching functions provided by this module; otherwise, the environment will not be updated properly (unless `env_pass_to_root` is also specified).
 
- * env_pass_to_root: default False; setting this to True will
-   make the effect of above `env_pass` also for the root privilege.
-   The above *Caution* strongly applies.
+ * `env_pass_to_root`: default `False`. Setting this to `True` applies `env_pass` variables to the `root` privilege state as well. The above *Caution* strongly applies.
 
- * sudo_allow_cached_cred: default False; only meaningful when sudo_wrap=True.
-   If set to True, it will allow sudo to reuse cached credential for
-   the user invoking the script, and omit asking the passwords.
+ * `sudo_allow_cached_cred`: default `False`; only meaningful when `sudo_wrap=True`.
+   If set to `True`, it allows `sudo` to reuse cached credentials for the invoking user, skipping password prompts.
  
-   This module is intended to be used with an explicit configuration in
-   `sudoers` file, but when the invoking user (typically an administrator) 
-   is allowed to invoke any commands via sudo, this module will work
-   without any explicit configurations.
+   This module is designed for use with explicit `sudoers` configurations. However, if the invoking user (typically an administrator) is permitted to run any command via `sudo`, this module will function without explicit script-specific entries.
 
-   Default value of False will protect users with "sudo all commands" rights
-   to accidentally invoking the script with suid emulation.
+   The default value of `False` protects users with global `sudo` privileges from accidentally running the script with setuid emulation.
 
-   Setting the value `-1` further enforces the restriction: if there
-   are no explicit configuration, sudo will reject working.
+   Setting this value to `-1` enforces an even stricter restriction: `sudo` invocation will fail if no explicit configuration exists.
 
-   Note that this protection is only a fool-proof functionality, not
-   any security enforcement: invoking any untrusted commands with sudo
-   admin setting is always dangerous.
+   Note: This protection serves as a safeguard against user error, not a cryptographic security boundary. Executing untrusted commands with global `sudo` access remains inherently risky.
 
- * showcmd_opts:
+ * `showcmd_opts`:
 
-   default None; if a string is given, this function will compare it
-   with first command-line argument.  If it matches, it shows the
-   command line for the re-invocation and exit.  If `True` (`1` in
-   Perl) is passed, it is treated as `"--show-sudo-command-line"`.
+   default `None`. If a string is provided, this function compares it with the first command-line argument. If it matches, the module prints the command line required for re-invocation and exits. Passing `True` (`1` in Perl) is equivalent to passing `"--show-sudo-command-line"`.
 
-## Privilege Switching Functions
+## Privilege-Switching Functions
 
-There are four functions performing switching between privileges.
-These functions will set user-ids and group-ids accordingly and
-set some user-related environmental variables (e.g. HOME) as well.
+There are four functions to handle privilege switching.
+These functions configure user and group IDs accordingly and update user-related environment variables (e.g., `HOME`).
 
-An optional parameter "setenv=False" will skip setting user-related
-environmental variables (not available in Perl).
+An optional parameter, `setenv=False`, skips updating environment variables (unavailable in Perl).
 
-See the "Exceptions" section for special handling of the errors
-in these functions.
+See the "Exceptions" section for details on error handling within these functions.
 
-Each of these functions can be used either as an ordinary function, or
-with a block of code, according to the syntax of each languages.
-As an ordinary function, it will just change the UID/GID.
-With a code block, it will revert the UID/GID setting after execution.
+Each function can be used either as a standalone call or with a block/closure, depending on language syntax.
+Called directly, it alters process UID/GID state globally.
+Used with a block/closure, it automatically restores previous UID/GID state upon completion.
 
-In Python, a code block can be specified using "with" statement.
-The following two blocks are similar after call to `suid_emulate()`.
+In Python, code blocks use `with` statements. The following two patterns behave identically after invoking `suid_emulate()`:
 
     temporarily_as_user()
-    do_user_level_task...
+    do_user_level_task()
     temporarily_as_root()
 
     with temporarily_as_user:
-        ... do_user_level_task ...
+        do_user_level_task()
 
-In Ruby, a code block can be specified as a block parameter to
-functions, as follows:
+In Ruby, code blocks are passed as block arguments:
 
     temporarily_as_user
-    do_user_level_task...
+    do_user_level_task
     temporarily_as_root
 
     temporarily_as_user {
-        ... do_user_level_task ...
+        do_user_level_task
     }
 
-In Perl, a code block can be specified as a code reference argument
-to functions as follows:
+In Perl, code blocks are passed as code references:
 
     temporarily_as_user;
-    ... do_user_level_task ...
+    do_user_level_task;
     temporarily_as_root;
 
     temporarily_as_user {
-        ... do_user_level_task ...
+        do_user_level_task;
     };
 
-In Ruby, you can also use system-builtin `Process::UID` and
-`Process::GID` modules.  Please do not mix use of these modules and
-the functions below.
+In Ruby, you can also use standard `Process::UID` and `Process::GID` module functions. Do not mix built-in process methods with the functions in this module.
 
 ### temporarily_as_root
 
-Set effective user/group ID to the privileged user, and
-real user/group ID to the unprivileged user.
-Secondary groups are set to those of the unprivileged user.
+Sets effective user/group IDs to the privileged user (`root`), and real user/group IDs to the unprivileged user.
+Supplementary groups are set to those of the unprivileged user.
 
 ### temporarily_as_real_root
 
-Set both real and effective user/group IDs to the privileged user.
-Secondary groups are set to [0].
-It is useful when invoking setuid-aware program (e.g. mount(8)) as root.
+Sets both real and effective user/group IDs to the privileged user (`root`).
+Supplementary groups are reset to `[0]`.
+Useful when invoking setuid-aware programs (e.g., `mount(8)`) as `root`.
 
 ### temporarily_as_user
 
-Set effective user/group ID to the unprivileged user, and
-real user/group ID to the privileged user.
-Secondary groups are set to those of the unprivileged user.
+Sets effective user/group IDs to the unprivileged user, and real user/group IDs to the privileged user (`root`).
+Supplementary groups are set to those of the unprivileged user.
 
-It should not be used to run any untrusted code or programs,
-because these can regain the root privilege by seteuid(2) or
-`temporarily_as_root()` above.
+Do not use this function to execute untrusted code or programs directly, as untrusted code can regain `root` privileges via `seteuid(2)` or `temporarily_as_root()`.
 
 ### drop_privileges_forever
 
-Set both real and effective user/group ID to an ordinary user,
-dropping any privilege for all the future.
+Sets both real and effective user/group IDs permanently to the ordinary user, dropping all root privileges for the remaining process lifecycle.
 
-It can be used to execute a command for which the calling user can do
-whatever (e.g. shell, editor or language interpreter), or to perform
-possibly-dangerous operation (e.g. eval or import).
+Use this before executing arbitrary commands under user control (e.g., shells, text editors, or script interpreters) or evaluating risky logic (e.g., `eval` or dynamic imports).
 
-After calling this, the process can not call `temporarily_as_root()`
-or other similar functions to revert the privileged status anymore.
-Using this as an context manager (Python) / with a block argument
-(Ruby/Perl) is also meaningless. If really needed, consider using
-`fork()` or `{call/run}_in_subprocess()` described below to separate
-the unprivileged operations to a child process.
+After calling this function, the process cannot revert to root privileges via `temporarily_as_root()` or related functions. Using this function as a context manager (Python) or with a block (Ruby/Perl) is ineffective. If temporary privilege reduction is required for untrusted operations, use `fork()` or `{call/run}_in_subprocess()`.
 
-## Calling an External Program
+## Calling External Programs
 
-### in Python
+### In Python
 
-In Python, if you need to call an external program with an altered
-privilege, pass one of the above privilege-changing function to a
-`preexec_fn` parameter of functions in subprocess built-in module.
+To execute an external program with altered privileges in Python, pass one of the privilege-switching functions as the `preexec_fn` parameter to functions in the `subprocess` module:
 
     import subprocess
     subprocess.call(args=["vi", "/tmp/file"],
                     preexec_fn=drop_privileges_forever)
 
-### in Ruby: spawn_in_privilege
+### In Ruby: spawn_in_privilege
 
-In Ruby, a wrapper function `spawn_in_privilege` is provided.
-It will take the argument similar to `exec` or `system` builtin,
-with two additional arguments at the beginning:
+In Ruby, the wrapper function `spawn_in_privilege` is provided.
+It accepts arguments similar to `exec` or `system`, with two leading arguments:
 
- * The first argument is either a symbol `:system` or `:spawn`.
-   If `:system` is given, the function will wait for the process
-   termination and returns the return status of the called program.
-   If `:spawn` is given, the function will return immediately when
-   invoking the child program is succeeded, and its process ID is
-   returned.
+ * The first argument is either `:system` or `:spawn`.
+   If `:system` is passed, the function waits for process termination and returns the exit status.
+   If `:spawn` is passed, the function returns immediately after spawning the child process and returns its PID.
 
-   In either case, if it cannot "exec" the child program, it will
-   raise an appropriate OSError instance synchronously.
+   In both cases, if the process cannot be executed, an `OSError` exception is raised synchronously.
 
- * The second argument is either
+ * The second argument is either:
 
-   - a symbol corresponding to the names of the above four
-     privilege-changing functions, representing what privilege will be
-     passed to the called program;
+   - A symbol corresponding to one of the four privilege-switching functions, defining the privileges applied to the child process; or
 
-   - A Method or Proc object, which is called before invoking the
-     child program (similar to preexec_fn in Python).
+   - A `Method` or `Proc` object executed before invoking the child program (similar to `preexec_fn` in Python).
 
- * The rest of arguments will be passed to the "exec" built-in.
+ * The remaining arguments are passed to the built-in `exec` call.
 
-The usage equivalent to above Python example is as follows:
+The Ruby equivalent of the Python example above is:
 
     spawn_in_privilege(:system, :drop_privileges_forever,
-                        "vi", "/tmp/file")
+                       "vi", "/tmp/file")
 
-### in Perl: spawn_in_privilege
+### In Perl: spawn_in_privilege
 
-The function `spawn_in_privilege` for Perl is similar for that of
-Ruby.  Differences are:
+The `spawn_in_privilege` function in Perl is structured similarly to Ruby, with the following differences:
 
- * The type of the first argument is string.
- * The type of the second argument is either a string
-   or a code reference (or code grob).
- * The rest arguments are passed to exec of the Perl.
+ * The first argument is a string (`"system"` or `"spawn"`).
+ * The second argument is either a function name string or a code reference.
+ * Remaining arguments are passed to Perl's `exec`.
 
-Its semantics tends to be similar to `system()` in Perl; however,
+Its semantics mirror Perl's built-in `system()`, except:
 
-  * If exec is failed, it will die instead of setting $? to -1.
+  * If `exec` fails, it calls `die` instead of setting `$?` to `-1`.
 
-  * The rest arguments are passed to `exec` of Perl builtin.  However,
-    if it is a single array reference, it will be specially translated
-    to bypass any shell interventions.  The arguments are translated as
-    follows:
+  * Arguments are passed to Perl's built-in `exec`. Passing a single array reference explicitly bypasses shell invocation:
 
         spawn_in_privilege(..., ..., a) => exec(a)
         spawn_in_privilege(..., ..., a, b) => exec(a, b)
@@ -343,119 +238,88 @@ Its semantics tends to be similar to `system()` in Perl; however,
         spawn_in_privilege(..., ..., [a, b]) => exec a (a, b)
         spawn_in_privilege(..., ..., [[a, a0], b]) => exec a (a0, b)
 
-If the first argument is "spawn" and the execution of command has
-succeeded, it will return the process ID of the child.
+When the first argument is `"spawn"` and process execution succeeds, the function returns the child PID.
 
-Please do not use "child reaper" signal handlers with "system".
+Do not use custom signal handlers for child process reaping alongside `"system"`.
 
-## Running Some Code in Sub-process
+## Running Code in a Sub-process
 
-As said above, untrusted code should be run with "completely
-untrusted" privilege.  It means that the result of such untrusted
-computations cannot be used in any trusted operations later.
+Untrusted code should run under fully restricted privileges to prevent it from affecting privileged operations.
 
-To resolve this, the module provides a helper function which
-will evaluate some portion of program within a forked subprocess.
+To accomplish this safely, the module provides helper functions that evaluate code blocks inside a isolated forked sub-process.
 
-Return value of the evaluation is returned to caller, using
-inter-process communications.  Such value is restricted to safe ones
-presentable in JSON or a little more; it cannot be a class instances
-with special methods (it obviously causes a security issue).  Simple
-booleans, numbers, strings, or lists or hashes of those values are all
-OK.
+Return values are serialized and returned to the parent process over IPC. Values are restricted to safe types representable in JSON (or simple extensions); passing complex class instances with custom methods is prohibited for security reasons. Booleans, numbers, strings, lists, and key-value maps of these types are fully supported.
 
-Exceptions are also propagated to the caller in a limited manner.
-Most of the built-in exceptions (especially system-call errors)
-are transparently passed to the parent; non-builtin Exceptions are
-either coerced to a parent built-in exception or wrapped with
-WrappedSubprocessError exception.
+Exceptions are also propagated to the parent process in a restricted manner.
+Standard built-in exceptions (e.g., system call errors) pass through transparently. Non-built-in exceptions are coerced into built-in parent exceptions or wrapped in a `WrappedSubprocessError`.
 
-The called function MUST return some value or raise an exception
-within Python.
-If you intend to exec() an external process, consider using
-other functions.
+The target function MUST return a value or raise an exception in Python.
+If you intend to execute an external process via `exec()`, use `subprocess` functions instead.
 
 ### call_in_subprocess (for Python)
 
-In Python, call_in_subprocess function takes a one function
-pointing to a function closure.
+In Python, `call_in_subprocess` accepts a single function object or closure.
 
-To evaluate arbitrary expression within a dropped privilege,
-either write:
+To execute arbitrary logic under dropped privileges:
 
-    # clean way
+    # Recommended
     def _():
         drop_privileges_forever()
         return what_to_do(...)
     result = call_in_subprocess(_)
 
-or
+or:
 
-    # dirty trick
+    # Alternative syntax
     @call_in_subprocess
     def result():
         drop_privileges_forever()
         return what_to_do(...)
 
-Current implementation uses a safe subset of Pickle bytecode
-for return value communication in Python.
+It uses a secure subset of `pickle` bytecodes for IPC response serialization.
 
 ### run_in_subprocess (for Ruby)
 
-In Ruby, run_in_subprocess function takes a block argument.
-
-To evaluate arbitrary expression within a dropped privilege,
-write:
+In Ruby, `run_in_subprocess` accepts a block argument:
 
     result = run_in_subprocess {
-        drop_privileges_forever()
+        drop_privileges_forever
         what_to_do(...)
     }
 
-Current implementation uses `YAML.safe_load` for return value
-communication in Ruby.
+It uses `YAML.safe_load` for IPC response serialization.
 
 ### run_in_subprocess (for Perl)
 
-In Perl, run_in_subprocess can be similarly used as Ruby.
-All exceptions are propagated as a simple string.
-Current implementation uses `JSON` (`JSON::PP`) for return value
-communication in Perl.
+In Perl, `run_in_subprocess` operates similarly to Ruby.
+Exceptions are propagated as plain text strings.
+It uses `JSON` (`JSON::PP`) for IPC response serialization.
 
-## Misc functions
+## Utility Functions
 
-Functions in this section are not exported; these should be called via
-an explicit module reference.
+Functions in this section are not exported by default and should be called via explicit module references.
 
 ### show_sudo_command_line
 
-It displays how the script will be re-invoked via sudo, to standard
-error stream (usually a console).
+Prints the re-invocation `sudo` command line to standard error (usually the terminal).
 
-Parameters `use_shebang`, `{python|ruby|perl}_flags`, `inherit_flags`,
-`pass_env`, `sudo_allow_cached_cred` are as same as `suid_emulate()`.
+Parameters `use_shebang`, `{python|ruby|perl}_flags`, `inherit_flags`, `pass_env`, and `sudo_allow_cached_cred` mirror those in `suid_emulate()`.
 
-### compute_sudo_commane_line_patterns
+### compute_sudo_command_line_patterns
 
-It returns strings representing the command-line patterns for
-re-invocation.  It returns a pair; the first element is a descriptive
-string for re-invocation pattern, and the second element is one
-used as an entry in `sudoers` file.
+Returns a pair of strings representing command-line patterns for script re-invocation: the first element is a descriptive pattern string, and the second is formatted for direct inclusion in a `sudoers` file.
 
-Parameters `use_shebang`, `{python|ruby|perl}_flags`, `inherit_flags`,
-`pass_env`, `sudo_allow_cached_cred` are as same as `suid_emulate()`.
+Parameters `use_shebang`, `{python|ruby|perl}_flags`, `inherit_flags`, `pass_env`, and `sudo_allow_cached_cred` mirror those in `suid_emulate()`.
 
-A string given in `user_str` parameter is used for users specification
-in `sudoers` patterns.
+The `user_str` parameter specifies the user/group string in the generated `sudoers` pattern.
 
 ## Defined Exceptions
 
-The following exceptions are implemented for Python and Ruby.
+The following exceptions are implemented for Python and Ruby:
 
 ### SUIDHandlingError
 
-A general runtime error raised during processing by suid_sudo module.
-It is derived from `RuntimeError` in Python and Ruby.
+A general runtime error raised during operations in the `suid_sudo` module. Inherits from `RuntimeError` in Python and Ruby.
 
 ### SUIDSetupError
 
@@ -463,63 +327,38 @@ A runtime error raised during initial setup of this module.
 
 ### SUIDPrivilegesSettingError
 
-A runtime error raised when "gaining" some privileges is failed.
+A runtime error raised when attempting to elevate privileges fails.
 
 ### SUIDPrivilegesSettingFatalError
 
-A _fatal_ runtime error raised when "dropping" privileges is failed.
+A *fatal* runtime error raised when dropping privileges fails.
 
-Failure on dropping privileges (including reverting to the lower
-privileges after high-privilege code is run) is really
-security-critical.  Such an event is quite unlikely to happen in usual
-cases, but once happened and if improperly handled, it will cause
-dangerous security issue: some code to be run in privileges higher
-than expected.
+Failing to drop privileges (or failing to drop privileges after executing a root block) is a critical security risk. While rare, unhandled privilege-drop failures can leave code executing with unintended elevated permissions.
 
-To mitigate this, for an extra caution, such failure is treated not
-like a usual exception, but like a call to `exit()`; its event will
-not be captured by `try: ... except RuntimeError: ...` in Python or
-simple `begin ... rescue ...` in Ruby.  (Internally,
-`SUIDPrivilegesSettingFatalError` is derived from `BaseException` in
-Python or `SecurityError` in Ruby.)
+To prevent unsafe execution, privilege-drop failures trigger process termination similar to `exit()`. These errors are not caught by standard `try: ... except RuntimeError:` blocks in Python or simple `begin ... rescue ...` blocks in Ruby. (Internally, `SUIDPrivilegesSettingFatalError` inherits from `BaseException` in Python and `SecurityError` in Ruby.)
 
-Any `finally` clauses, as well as the simplest `try: ... except: ...`
-clause in Python still cover these cases, so be careful what to write
-in these clauses.
+`finally` clauses and bare `try: ... except:` blocks in Python will still execute on fatal exceptions, so exercise caution when defining cleanup blocks.
 
-If you really need this case to be handled, you must be very careful
-to write exception-handling code in the manner which can be run with
-unknown/unexpected privileges; then, you can capture this "exception"
-explicitly by its name.
+If handling this exception is required, structure exception handlers carefully to account for unknown or unexpected privilege states, and catch `SUIDPrivilegesSettingFatalError` explicitly by name.
 
 ### SUIDSubprocessError
 
-A runtime error raised when `call_in_subprocess` or
-`run_in_subprocess` had a failure.  Most common cause of
-this error is that the given code did not return a value
-(e.g. by calling "`exec()`").
+A runtime error raised when `call_in_subprocess` or `run_in_subprocess` fails. The most common cause is code terminating without returning a value (e.g., calling `exec()`).
 
 ### WrappedSubprocessError
 
-A runtime error raised when the code called with `call_in_subprocess`
-or `run_in_subprocess` raised a non-builtin exception.
-It is a subclass of `SUIDSubprocessError`.
+A runtime error raised when code invoked via `call_in_subprocess` or `run_in_subprocess` raises a non-built-in exception. Inherits from `SUIDSubprocessError`.
 
 ### Errors in Perl
 
-In Perl, a blessed object defined in SUID_SUDO:: package hierarchy
-will be thrown (by `die`) when any error has occurred.  See `perlfunc`
-manual page for details on how to handle these in an object-oriented
-way.  `SUIDPrivilegesSettingFatalError` is not provided in Perl, as
-exception handling constructs of Perl are very simple.
+In Perl, errors throw blessed objects from the `SUID_SUDO::` package hierarchy via `die`. Refer to the `perlfunc` documentation for details on object-oriented exception handling. `SUIDPrivilegesSettingFatalError` is omitted in Perl due to Perl's simpler exception model.
 
-## Reference
+## References
 
  * suid_sudo: https://github.com/yoiwa-personal/suid_sudo/
 
-## Author
+## Author and License
 
 Yutaka OIWA <yutaka@oiwa.jp>.
 
-This file should be treated as a part of suid_sudo module,
-distributed under Apache License 2.0.
+This document is part of the `suid_sudo` module, distributed under the Apache License 2.0.

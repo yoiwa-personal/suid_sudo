@@ -1,175 +1,150 @@
 [-]: # " -*- mode: gfm; coding: utf-8 -*- "
 
-# SUID_SUDO: Emulate behavior of set-uid binary when invoked via sudo(1).
+# SUID_SUDO: Emulate behavior of set-uid binaries when invoked via sudo(1)
 
 https://github.com/yoiwa-personal/suid_sudo/
 
 ## Overview
 
-This module enables Python/Ruby/Perl scripts to perform most of its
-works in the invoking user's non-root privilege, while employing
-root's power for a part of its job.
+This module enables Python, Ruby, and Perl scripts to perform most of their
+work with the invoking user's non-root privileges, while leveraging
+root privileges for specific tasks.
 
-In Unix-like systems, this kind of operation is possible via
-"setuid" feature for binary executables; however, there are
-operating systems which ignores "setuid" for interpreted scripts
-(e.g. Python, Ruby or Perl) for well-known security reasons.
+In Unix-like systems, this kind of operation is possible via the
+"setuid" feature for binary executables; however, many operating systems
+ignore "setuid" for interpreted scripts (e.g., Python, Ruby, or Perl)
+for well-known security reasons.
 This module emulates the "setuid" feature in cooperation with
-the "sudo" tool installed in many systems.
+the `sudo` tool installed on many systems.
 
-Programmers using this module shall be aware of Unix-like semantics
-and techniques around the "setuid" feature.
+Programmers using this module should be familiar with Unix-like semantics
+and techniques surrounding the "setuid" feature.
 
-The main function in this module is the "suid_emulate" function.
+The main function in this module is `suid_emulate`.
 
-Functions/Features available:
+Functions and features available:
 
  - Initialization
  - Privilege control
- - Helpers for executing unprivileged codes/sub-processes
+ - Helpers for executing unprivileged code/sub-processes
 
-Python 3.5.13 or later is required.
-Ruby 2.3 or later is required.
-Perl 5.24.1 or later is required.
+Requirements:
+ - Python 3.5.13 or later
+ - Ruby 2.3 or later
+ - Perl 5.24.1 or later
 
 ## History
 
-Unix-like environment has a feature of "setuid" execution from long
-ago, allowing ordinary users to start a command which are to be run
-with a higher privilege.  Such higher-privileged commands knows the ID
-of the invoking user told from the operating system, and be able to
-perform a "user-dependent" operation.  For example, "passwd" command
-invoked by an ordinary user can only change the password of that user;
-"mount" and "sudo" are limiting the ability by itself based on the
-invoking user and system configuration.  However, in some operating
-systems, such an ability is only provided for a binary compiled
-program and not for those written in scripting languages, due to a
-technical, security-related reason.
+Unix-like environments have long featured "setuid" execution,
+allowing ordinary users to launch commands that run with higher privileges.
+Such higher-privileged commands know the ID of the invoking user provided by
+the operating system and can perform user-dependent operations.
+For example, the `passwd` command invoked by an ordinary user can only change
+that user's password; `mount` and `sudo` restrict their capabilities based
+on the invoking user and system configuration. However, in some operating systems,
+such capabilities are only granted to compiled binaries and not to scripts,
+due to technical and security-related reasons.
 
-Once upon a time, there was a utility helper called "suidperl" to
-emulate behavior or the "setuid script" for the Perl language,
-overcoming this technical limitation.  However, there found so many
-vulnerabilities around that tool (some are the problem of the helper
-itself, but most are caused by complexity of interactions with the
-underlying operating system (e.g. detecting "nosudo" option of
-filesystem mounts is not straight forward), and it was deprecated in
-Perl 5.6.1 then removed completely in Perl 5.12.
+Once upon a time, a utility helper called `suidperl` existed to emulate the
+behavior of "setuid scripts" for Perl, overcoming this technical limitation.
+However, many vulnerabilities were found surrounding that tool (some related to
+the helper itself, but most caused by complex interactions with the underlying
+operating system - such as detecting the `nosuid` mount option on filesystems).
+As a result, it was deprecated in Perl 5.6.1 and completely removed in Perl 5.12.
 
-The manual of the Perl 5.6.1 says:
+The Perl 5.6.1 manual stated:
 
-    Use of suidperl is highly discouraged.  If you
+    Use of suidperl is highly discouraged. If you
     think you need it, try alternatives such as sudo first.
 
-However, the manual did not tell "how" to do that.  In fact, the
-"sudo" tool is useful for simply assigning the "root" privilege to
-scripts and other tools, but not well-powered to write a tool which
-changes actions based on the invoking user's difference.
+However, the manual did not explain *how* to do so. While `sudo` is useful
+for assigning `root` privileges to scripts and tools, it is not well-suited for
+writing tools that vary their actions based on the invoking user's identity.
 
-This is why this module is implemented.
+This module was implemented to address that gap.
 
 ## SECURITY WARNING
 
-Inappropriate use of this module will open up a huge security hole
-(possibly privilege escalation) for ordinary users.  In the past,
-obsolete "suidperl" feature of the Perl language, the special language
-interpreter takes care of various possible security pitfalls
-(e.g. limiting use of $ENV{PATH}).  This module, on the contrary,
-simply relies on the "sudo" generic wrapper for the most of the
-security checks.  In other words, this module only "drops" the
-privilege given by sudo, not "raises" any.  However, still there are
-several possible pitfalls which may grant root privileges to ordinary
-users.
+Inappropriate use of this module can create a major security vulnerability
+(potentially leading to privilege escalation) for ordinary users. In the past,
+when the obsolete `suidperl` feature handled setuid Perl execution, the specialized
+interpreter took care of various security pitfalls (e.g., restricting the use of `$ENV{PATH}`).
+By contrast, this module relies on `sudo` as a generic wrapper for most security checks.
+In other words, this module only *drops* privileges granted by `sudo`; it does not *raise* any.
+Nevertheless, several potential pitfalls remain that could grant root privileges to ordinary users.
 
-In general, the script must be safe enough to be run as root via sudo.
-That means:
+In general, the script must be secure enough to be safely run as root via `sudo`.
+This means:
 
-  - the script and its parent/ancestor directories should be owned by
-    root and not modifiable by any ordinary users,
+  - The script and its parent/ancestor directories should be owned by `root`
+    and not writable by ordinary users.
 
-  - the script should be explicitly specified in sudoers(5) file
-    with the full path specification, and
+  - The script should be explicitly specified in the `sudoers(5)` file
+    using its full path.
 
-  - the script must be careful about any environment variables and any
-    other environmental properties which will affect the language
-    intepreter, the script, and any subcommands invoked from it.
+  - The script must carefully handle environment variables and other environmental
+    properties that could affect the language interpreter, the script itself,
+    or any subcommands it invokes.
 
-Regarding the Python specifically, we strongly recommend that
+For **Python**, we strongly recommend that:
 
-  - The script will have `-I` (`-Es` in Python 2.7) flag in the
-    she-bang line.
+  - The script includes the `-I` (`-Es` in Python 2.7) flag in its shebang line.
 
-  - When sudo_wrap option is enabled, keep `python_flags="IR"`
-    intact.
+  - When the `sudo_wrap` option is enabled, keep `python_flags="IR"` intact.
 
-  - When there are data communications between processes of different
-    privileges, the high-privilege side must use "secure" data
-    decoders, for example "SafeUnpickler" in this module or "JSON".
+  - When transmitting data between processes with different privilege levels,
+    the privileged process must use secure data decoders (e.g., `SafeUnpickler`
+    provided in this module, or `JSON`).
 
-Regarding the Ruby, we strongly recommend that
+For **Ruby**, we strongly recommend that:
 
-  - In Ruby before 2.7, the script will have `-T` flag in the shebang
-    line to ignore environment variables.  Note that `-T` will be
-	removed in Ruby 3.0.
+  - In Ruby versions prior to 2.7, the script includes the `-T` flag in the shebang
+    line to ignore environment variables. (Note: `-T` was removed in Ruby 3.0.)
+    This requires writing the script in a taint-aware manner.
 
-    It means that the script must be written in taint-aware way.
-    (Recent Ruby versions allows dropping the security level from the
-    script, but it is not recommended for just avoiding taint-aware
-    programming.)
+  - When the `sudo_wrap` option is enabled, keep `ruby_flags='T'` intact.
 
-  - When sudo_wrap option is enabled, keep `ruby_flags='T'` intact.
+  - When transmitting data between processes with different privilege levels,
+    the privileged process must use secure data decoders (e.g., `YAML.safe_load`).
 
-  - When there are data communications between processes of different
-    privileges, the high-privilege side must use "secure" data
-    decoders, for example "yaml.safe_load".
+For **Perl**, we strongly recommend that:
 
-Regarding the Perl, we strongly recommend that
+  - The script includes the `-T` (or at least `-t`) flag in the shebang line
+    to ignore environment variables. This requires writing the script in a taint-aware manner.
 
-  - The script will have `-T` (or at least `-t`) flag in the shebang
-    line to ignore environment variables.
+  - When the `sudo_wrap` option is enabled, keep `perl_flags='T'` intact.
 
-    It means that the script must be written in an taint-aware way.
+  - When transmitting data between processes with different privilege levels,
+    the privileged process must use secure data decoders (e.g., `JSON`).
 
-  - When sudo_wrap option is enabled, keep `perl_flags='T'` intact.
+When invoking subcommands from the script, we strongly recommend that:
 
-  - When there are data communications between processes of different
-    privileges, the high-privilege side must use "secure" data
-    decoders, for example "JSON".
+  - The `secure_path` option in `sudo` is enabled.
 
-Regarding calling sub-commands from the script, we strongly recommend
-that
+  - Sudo's global `env_reset` and per-command `NOSETENV` options are enabled,
+    and the use of `env_keep` in `sudoers` is avoided as much as possible.
+    If `env_keep` is strictly required, the `-I` (or `-T`) option described above
+    must remain enabled at all times, and the script should construct a clean
+    environment internally after reading necessary variables.
 
-  - secure_path option of sudo is enabled,
+## THREADING (NOT SUPPORTED)
 
-  - sudo's global env_reset and per-command NOSETENV options are
-    enabled, and use of env_keep in sudoers is avoided as far as
-    possible; if it is really needed, `-I` (or `-T`) option described
-    above is strictly enabled at all time, and the script should
-    set-up sane environment by itself, after reading the required
-    environment variables.
+Avoid using threads with this module.
 
-## THREADING (NOT):
+At least four conflict scenarios exist regarding threading in this module:
 
-Avoid use of threads as far as possible, with this module.
+ - Changing user IDs (or effective UID/GID) at the OS level is inherently not thread-safe.
+   Changing process privileges affects all running threads in the process.
 
-There are at least four possible conflict cases regarding threading
-with this module.
+ - The implementation of this module is not thread-safe. Executing functions
+   from this module concurrently will corrupt internal state management.
+   All API calls must be serialized.
 
- - OS's changing user-id (or effective uid/gid) feature is inherently
-   not thread-safe.  Changing process privilege will affect all
-   running threads.
+ - All functions in this module that restore context after execution assume that
+   entry and exit of contexts are strictly nested in serialized order across all threads.
 
- - Implementation of this module is also not thread-safe.  Running
-   functions of this module concurrently will break consistency of the
-   internal state management.  At least, all invocation of API
-   functions must be serialized.
-
- - All functions that will revert the context after execution in this
-   module assume that entry and exit of contexts are properly nested
-   in the serialized running order, considering all threads.
-
- - The function call_in_subprocess() or run_in_subprocess() uses
-   `fork`, which may cause dead-locking of the whole interpreter or
-   internal libraries when used with threads.
+ - The `call_in_subprocess` and `run_in_subprocess` functions use `fork`,
+   which may cause deadlocks in the interpreter or internal libraries when used with threads.
 
 ## Programmer's Usage
 
@@ -178,182 +153,143 @@ See [API documentation](doc/APIs.md) and
 
 ### Initialization
 
-In the very beginning of the script, call `suid_emulate`.  It will
-check whether it has a root privilege.  If `sudo_wrap` option is set
-to true, the function will re-invokes itself via `sudo` when the
-privilege is not available.
+Call `suid_emulate` at the very beginning of the script. It checks whether the process
+has root privileges. If the `sudo_wrap` option is set to true, the function will
+re-invoke the script via `sudo` if root privileges are not present.
 
-When the root privilege is available, It will find out which user has
-invoked the script via `sudo`, and imitates the condition when the
-script were called as a "setuid program"; That is, it will set the
-real user-id to the invoking user, while keeping the effective user-id
-as root.
+When root privileges are available, it determines which user invoked the script via `sudo`
+and emulates the environment of a "setuid program": it sets the real user ID
+to the invoking user while preserving the effective user ID as root.
 
-After that, the script can switching between real and root user-ids as
-it wants. This module provides the following functions.
+After initialization, the script can switch between the real and root user IDs as needed.
+This module provides the following functions for this purpose:
 
-### Switching between users:
+### Switching Between Users
 
-The following four functions will set-up effective and real user-ids
-(as well as group ids) as appropriately:
+The following four functions configure the effective and real user IDs (as well as group IDs) accordingly:
 
-- temporarily_as_user: set effective user-id to the ordinary user, and
-  keep root privilege to the real user-id.
+- `temporarily_as_user`: Sets the effective user ID to the ordinary user while keeping root privileges attached to the real user ID.
 
-- temporarily_as_root: set effective user-id to the root, and set real
-  user-id to the ordinary user; effectively undoes other settings.
+- `temporarily_as_root`: Sets the effective user ID to root and the real user ID to the ordinary user (undoes `temporarily_as_user`).
 
-- temporarily_as_real_root: set both effective user-id and real user-id
-  to the root.  Useful when the script calls external programs which are
-  "setuid-aware" (e.g. mount(8)).
+- `temporarily_as_real_root`: Sets both the effective and real user IDs to root. Useful when calling external programs that are setuid-aware (e.g., `mount(8)`).
 
-- drop_privileges_forever: set both effective user-id and real user-id
-  to the ordinary user;  there will be no way to revert to the set-uid
-  status.  Required to call any untrusted programs such as editors.
+- `drop_privileges_forever`: Sets both the effective and real user IDs to the ordinary user permanently. Once called, privileges cannot be restored. Required before executing untrusted programs, such as text editors.
 
-These functions will update and restore some user-related
-environmental variables (such as HOME and LOGUSER) accordingly.
+These functions automatically update and restore user-related environment variables (such as `HOME` and `LOGNAME`).
 
-It can be used either as an ordinary function or as a context manager
-(Python) / iterator (Ruby/Perl). For example, either
-
-    temporarily_as_user()
-    do_user_level_task...
-    temporarily_as_root()
-
-or
+They can be used either as ordinary functions or as context managers (Python) / iterators (Ruby/Perl):
 
     # Python
     with temporarily_as_user:
-        do_user_level_task...
+        do_user_level_task()
 
     # Ruby/Perl
     temporarily_as_user {
-        do_user_level_task...
+        do_user_level_task
     }
 
-is possible.
+### Calling Sub-programs with Specific Privileges
 
-### Calling sub-program with privilege setting
-
-In Python, to call external programs with a specific privilege,
-pass one of the above functions to the `preexec_fn` argument of
-library functions in the "subprocess" module.  For example,
+In Python, to execute external programs with specific privileges, pass one of the above
+functions to the `preexec_fn` argument of functions in the `subprocess` module:
 
     # Python
     import subprocess
     subprocess.call(args=["vi", "/tmp/file"],
                     preexec_fn=drop_privileges_forever)
 
-In Ruby/Perl, this module provides a wrapper function to spawn/system
-with privilege setting.
+In Ruby and Perl, this module provides wrapper functions for `spawn`/`system` with privilege settings:
 
     # Ruby
     spawn_in_privilege(:system, :drop_privileges_forever,
-                        "vi", "/tmp/file")
+                       "vi", "/tmp/file")
 
-The first argument is a symbol either `:system` or `:spawn`,
-and the second argument is a symbol corresponding to the above
-four functions.
+The first argument is either `:system` or `:spawn`, and the second argument is a symbol
+corresponding to one of the four privilege functions.
 
-### Running some code in a sub-process
+### Running Code in a Sub-process
 
-To perform a bit of untrusted works under restricted privilege and
-still need to continue other work with the root privilege, you need to
-run that code in sub-process.  Otherwise, `temporarily_as_user` is
-used for that purpose, such an untrusted code can regain the root
-privilege by calling `temporarily_as_root` or `seteuid`.
+To perform untrusted work under restricted privileges while needing to return to root
+privileges afterward, run that code in a sub-process. If `temporarily_as_user` is used
+directly in the main process, untrusted code could potentially regain root privileges
+by calling `temporarily_as_root` or `seteuid`.
 
-For that purpose, `call_in_subprocess` or `run_in_subprocess` function
-is available.  Both functions create a sub-process, run the given code
-in that sub-process, and send back a return value of that code to the
-parent.
+The `call_in_subprocess` and `run_in_subprocess` functions are provided for this purpose.
+Both functions spawn a sub-process, execute the provided code within it, and send the return value
+back to the parent process.
 
-In Python, `call_in_subprocess` is useful in the following way:
-
-    ... calling code ...
+In Python, `call_in_subprocess` is used as follows:
 
     def job_to_do():
         drop_privileges_forever()
-        ... untrusted code ...
-        return (...)
+        # ... untrusted code ...
+        return result
+
     retvalue = call_in_subprocess(job_to_do)
 
-In Ruby/Perl, `run_in_subprocess` is available as follows:
+In Ruby/Perl, `run_in_subprocess` is used as follows:
 
     retvalue = run_in_subprocess {
         drop_privileges_forever
-        ... untrusted code ...
-        (return value)
+        # ... untrusted code ...
+        # (return value)
     }
 
-For security keeping, values transported from the sub-process are
-limited to those presentable in JSON or little more.  Exceptions are
-also propagated to the caller, with value limitations: built-in
-exceptions are supported, and others are mapped to
-`WrappedSubprocessError` or some super-class exceptions.
+For security, values returned from the sub-process are limited to those serializable in JSON
+(or slightly extended types). Exceptions are also propagated to the caller with value restrictions:
+built-in exceptions are preserved, while custom exceptions are mapped to `WrappedSubprocessError`
+or generic parent exception classes.
 
-## User-side usage
+## User-Side Usage
 
-Users should invoke scripts via sudo.  If the program uses `sudo_wrap`
-option, the script will also support direct invocation.  In either
-case, `sudo` must be correctly configured to allow user invocation.
+Users should invoke scripts via `sudo`. If the program enables the `sudo_wrap` option,
+direct invocation is also supported. In either case, `sudo` must be configured properly to allow user execution.
 
-For safety purpose, the script will refuse to be called directly
-from the root user by default.
-If the program has enabled `realroot_ok` options, it can be
-overcome by explicitly calling via sudo. (From the ordinary user,
-call as `sudo sudo scriptname`.)
+For security reasons, the script will refuse to run directly from the `root` user by default.
+If the program enables the `realroot_ok` option, root invocation can be allowed when explicitly called via `sudo`
+(e.g., an ordinary user calling `sudo sudo scriptname`).
 
-### SUDO configuration
+### SUDO Configuration
 
-If the `sudo_wrap` option is enabled, the script will execute itself
-with a specific pattern of command line.  Accordingly, `sudo` must be
-configured to match that invocation pattern.
+If the `sudo_wrap` option is enabled, the script re-executes itself with a specific command-line structure.
+Accordingly, `sudo` must be configured in `sudoers` to match that pattern:
 
- - If the `use_shebang` is enabled, put something like the
-   following entry:
+ - If `use_shebang` is enabled, add an entry like:
 
         user ALL = (root:root) NOPASSWD: /full/path/to/script
 
- - If the `use_shebang` is not enabled, put something like the
-   following entry:
+ - If `use_shebang` is disabled, add an entry like:
 
         user ALL = (root:root) NOPASSWD: /usr/bin/python3 -I -R /full/path/to/script *
 
-   The path to the interpreter should be replaced according to the
-   system installation.  The part `user` may be replaced by group
-   specification (like `%group`) or by `ALL`. The tag `NOPASSWD:`
-   may be removed, if you wish to let sudo ask user's passwords.
+   Replace the interpreter path according to your system installation. The `user` field
+   can be replaced with a group (e.g., `%group`) or `ALL`. The `NOPASSWD:` tag can be omitted
+   if password prompts are desired.
 
-   The options specified for the interpreter shall be the same as that
-   specified in the `python_opts` or similar options inside the
-   script.
- 
-   If `inherit_flags` is enabled, list of options will vary according to
-   various conditions: If `show_sudo_command_line` is enabled, you can
-   see the exact sudoers line to set by calling the script with
-   `--show-sudo-command-line` option.
+   Interpreter flags specified in `sudoers` must match those set in `python_opts` (or equivalent options)
+   within the script.
 
-You can limit _unintentional_ invocation of script explicitly via sudo
-by specifying something like:
+   If `inherit_flags` is enabled, the list of options will vary based on conditions. If `show_sudo_command_line`
+   is enabled, running the script with `--show-sudo-command-line` will print the exact `sudoers` line required.
+
+To explicitly limit unintentional direct execution via `sudo`, you can specify entries such as:
 
      user ALL = (root:root) NOPASSWD: /usr/bin/python3 -I -R /full/path/to/script ----sudo_wrap\=*
 
      user ALL = (root:root) NOPASSWD: /full/path/to/script ----sudo_wrap\=*
 
-but it can be easily circumvented by moderately clever users.
+Note, however, that determined users can circumvent command-line pattern restrictions.
 
 ## PORTING
 
-This module currently relies on the Linux implementation of the
-`/proc` filesystem to find out whether the script is called directly
-by "sudo".  Porting to other POSIX.1 compilient Unix-like systems
-should be easy.
+This module currently relies on the Linux `/proc` filesystem implementation to determine whether
+a script was invoked directly by `sudo`. Porting to other POSIX.1-compliant Unix-like systems
+is straightforward.
 
-The Linux dependent code is inside the "called_via_sudo" function.
+The Linux-dependent logic is isolated within the `called_via_sudo` function.
 
-## Copyright
+## Copyright and License
 
 Copyright 2019 Yutaka OIWA <yutaka@oiwa.jp>
 
@@ -361,7 +297,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
