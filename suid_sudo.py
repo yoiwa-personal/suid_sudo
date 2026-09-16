@@ -493,6 +493,7 @@ def _decode_wrapped_info(v, uid, gid, pass_env):
                 p_status.cmdline == pp_status.cmdline and
                 p_status.path in allowed_sudo):
                 invoked_sudo = pppid
+                setattr(sinfo, "gp_proc_stat", pp_status) # for debugging
     if not invoked_sudo:
         raise SUIDSetupError("error: wrapped invocation key mismatch (pid)o")
     return {"passed_env": _decode_passenv(v[3], pass_env)}
