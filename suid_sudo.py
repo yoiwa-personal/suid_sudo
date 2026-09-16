@@ -214,6 +214,89 @@ class _SuidStatus:
     def __str__(self):
         return repr(self)
 
+class _Proc_Info:
+    _procexe_linkname = None
+    @classmethod
+    def procexe_linkname(self, pid):
+        """Returns a path name of the "executable path" link for a given process ID.
+        Existence of /proc file system is assumed."""
+        if self._procexe_linkname == None:
+            self_pid = os.getpid()
+            for l in ("exe", "file"):
+                f = "/proc/%d/%s" % (self_pid, l)
+                if os.path.exists(f):
+                    try:
+                        os.readlink(f)
+                        # exe link must be available and is a readable link
+                    except OSError as e:
+                        raise "/proc system is something bad"
+
+                    self._procexe_linkname = l
+                    break
+            if self._procexe_linkname == None:
+                raise SUIDSetupError("cannot read /proc to check sudo")
+
+        return "/proc/%d/%s" % (pid, self._procexe_linkname)
+
+    @classmethod
+    def _split_stat(self, s):
+        l12, sep, r2 = s.rpartition(') ')
+        if sep != ') ': raise "something is bad on proc_pid_stat (1)"
+        f1, sep, f2 = l12.partition(' (')
+        if sep != ' (': raise "something is bad on proc_pid_stat (2)"
+        f33 = r2.split(' ')
+        return [f1, f2] + f33
+
+    @classmethod
+    def _split_status(self, s):
+        ret = {}
+        lines = s.split("\n")
+        for l in lines:
+            f, sep, v = l.partition(":\t")
+            if (sep != ":\t" and l != ""):
+                import warnings
+                warnings.warn(f"unparseable line {l!r} in proc_pid_status")
+                continue
+            ret[f.upper()] = v
+        return ret
+
+    @classmethod
+    def _read_all(self, f):
+        with open(f, "r") as ff:
+            return ff.read()
+
+    def __init__(self, pid):
+        self.pid = pid
+        store = {}
+        for xtimes in range(0,10):
+            try:
+                os.stat("/proc/%d" % pid)
+                path = store["path"] = os.readlink(self.procexe_linkname(pid))
+                lstat = store["stat"] = os.lstat(path)
+                store["cmdline"] = self._read_all("/proc/%d/cmdline" % pid)
+                store["proc_stat"] = self._split_stat(self._read_all("/proc/%d/stat" % pid))
+                store["proc_status"] = self._split_status(self._read_all("/proc/%d/status" % pid))
+
+                path2 = os.readlink(self.procexe_linkname(pid))
+                lstat2 = os.lstat(path2)
+
+                if path != path2 or lstat != lstat2:
+                    continue
+
+                for key in ("path", "stat", "cmdline", "proc_stat", "proc_status"):
+                    object.__setattr__(self, key, store[key])
+
+                self.error = False
+                self.ppid = int(self.proc_status["PPID"])
+                self.uids = self.proc_status["UID"]
+                self.proc_id = "%s/%s" % (self.proc_stat[0], self.proc_stat[21])
+                break
+            except OSError as e:
+                self.error = e
+            break
+        else:
+            raise OSError(errno.EAGAIN, "reading /proc not stable")
+    
 class _Surround_Info:
     _surrounds = None
 
@@ -277,32 +360,9 @@ class _Surround_Info:
         Caveats: what happens if two executable ping-pongs altogether?
         (OK for suid_sudo because it will never happen when one side is sudo)
         """
-        if self._surrounds: return _surrounds
+        if self._surrounds: return self._surrounds
         surrounds = self._surrounds = _Surround_Info()
         return surrounds
-
-    _procexe_linkname = None
-    @classmethod
-    def procexe_linkname(self, pid):
-        """Returns a path name of the "executable path" link for a given process ID.
-        Existence of /proc file system is assumed."""
-        if self._procexe_linkname == None:
-            self_pid = os.getpid()
-            for l in ("exe", "file"):
-                f = "/proc/%d/%s" % (self_pid, l)
-                if os.path.exists(f):
-                    try:
-                        os.readlink(f)
-                        # exe link must be available and is a readable link
-                    except OSError as e:
-                        raise "/proc system is something bad"
-
-                    self._procexe_linkname = l
-                    break
-            if self._procexe_linkname == None:
-                raise SUIDSetupError("cannot read /proc to check sudo")
-
-        return "/proc/%d/%s" % (pid, self._procexe_linkname)
 
     def __init__(self):
         # self status is reliable and stable.
@@ -324,10 +384,9 @@ class _Surround_Info:
 
         # sanity check: check for exe link
 
-        _Surround_Info.procexe_linkname(pid)
+        _Proc_Info.procexe_linkname(pid)
 
         for xtimes in range(0,10):
-            ppid_1 = path_1 = stat_1 = stat_2 = path_2 = ppid_2 = None
             self.status = None
 
             #b("==== ppid_1 ==== (%d)" % (xtimes,))
@@ -335,16 +394,16 @@ class _Surround_Info:
             if (ppid_1 == 1) :
                 # parent exited
                 self.status = self.ENOENT
-                self.p_path = nil
-                self.p_stat = nil
+                self.os_error = None
+                self.p_path = None
+                self.p_stat = None
+                self.proc_stat = None
                 return
 
-            linkpath_1 = _Surround_Info.procexe_linkname(ppid_1)
+            ppid_1_status = _Proc_Info(ppid_1)
 
-            try:
-                #b("path_1")
-                path_1 = os.readlink(linkpath_1)
-            except OSError as e:
+            if ppid_1_status.error:
+                e = ppid_1_status.error
                 if e.errno == errno.ENOENT:
                     # parent exited now
                     if os.getppid() != 1:
@@ -359,48 +418,16 @@ class _Surround_Info:
                         if ppid_0 != ppid_1:
                             raise
                         self.status = self.EACCES
-                        self.p_path = e
-                        self.p_stat = e
+                        self.p_path = None
+                        self.p_stat = None
+                        self.os_error = e
+                        self.proc_stat = ppid_1_status
                         return
                     elif ppid_2 == 1:
-                # cannot read: because parent exited (and I am non-root)
+                        # cannot read: because parent exited (and I am non-root)
                         continue
                     else:
                         raise
-
-            try:
-                #b("stat_1")
-                stat_1 = os.stat(linkpath_1)
-            except OSError as e:
-                if e.errno == errno.ENOENT:
-                    # parent exited now
-                    if os.getppid() != 1:
-                        raise
-                    continue
-                elif e.errno == errno.EPERM or e.errno == errno.EACCES:
-                    # cannot read: different owner?
-                    ppid_2 = os.getppid()
-                    if ppid_1 == ppid_2:
-                        self.status = "EACCES"
-                        stat_1 = e
-                        # go through to "path_2" below to check path consistency
-                    elif ppid_2 == 1:
-                        # cannot read: because parent exited
-                        continue
-                    else:
-                        raise e
-
-            try:
-                #b("path_2")
-                path_2 = os.readlink(linkpath_1)
-                if path_1 != path_2: continue
-
-            except OSError as e:
-                if (e.errno == errno.ENOENT or e.errno == errno.EPERM or
-                    e.errno == errno.EACCES):
-                    continue
-                else:
-                    raise e
 
             #b("ppid_2")
             ppid_2 = os.getppid()
@@ -409,8 +436,10 @@ class _Surround_Info:
             if (ppid_0 != ppid_1): raise
 
             self.status = self.SUCCESS if not self.status else self.status
-            self.p_path = path_1
-            self.p_stat = stat_1
+            self.os_error = None
+            self.p_path = ppid_1_status.path
+            self.p_stat = ppid_1_status.stat
+            self.proc_stat = ppid_1_status
             return
 
         raise OSError(errno.EAGAIN, "reading /proc not stable")
@@ -440,8 +469,32 @@ def _encode_wrapper_info(envp):
 
 def _decode_wrapped_info(v, uid, gid, pass_env):
     ppid = os.getppid()
-    if len(v) != 4 or str(ppid) != v[0] or str(uid) != v[1] or str(gid) != v[2]:
+    invoked_sudo = False
+    if len(v) != 4 or str(uid) != v[1] or str(gid) != v[2]:
         raise SUIDSetupError("error: wrapped invocation key mismatch")
+    pp = int(v[0])
+    if str(pp) != v[0]:
+        raise SUIDSetupError("error: bad format wrapped invocation key")
+    if pp == ppid:
+        invoked_sudo = ppid
+    else:
+        # OOPS, the parent is not the calling PID.
+        # check if the grandparent is.
+        sinfo = _Surround_Info.check_surround()
+        if (sinfo.status == _Surround_Info.SUCCESS and
+            sinfo.proc_stat.ppid == pp):
+            p_status = sinfo.proc_stat
+            pppid = sinfo.proc_stat.ppid
+            pp_status = _Proc_Info(pppid)
+            if ((not pp_status.error) and
+                p_status.path == pp_status.path and
+                p_status.stat == pp_status.stat and
+                p_status.uids == pp_status.uids and
+                p_status.cmdline == pp_status.cmdline and
+                p_status.path in allowed_sudo):
+                invoked_sudo = pppid
+    if not invoked_sudo:
+        raise SUIDSetupError("error: wrapped invocation key mismatch (pid)o")
     return {"passed_env": _decode_passenv(v[3], pass_env)}
 
 def _setup_passenv(pass_env):
