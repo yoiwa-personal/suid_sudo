@@ -112,6 +112,8 @@ if ($cmd eq "0") {
       # should be ENOENT, not EPERM or exited(2).
 } elsif ($cmd eq "system_r") {
     print spawn_in_privilege("system", "temporarily_as_real_root", "id")
+} elsif ($cmd eq "dump") {
+    print SUID_SUDO::Dumper($SUID_SUDO::_surrounds);
 } else {
     print "unknown command \"\Q$cmd\E\"\n";
 }

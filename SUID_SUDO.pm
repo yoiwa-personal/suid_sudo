@@ -348,21 +348,106 @@ sub _check_surround () {
     return $_surrounds = _create_surround_init();
 }
 
-sub _procexe_linkname ($) {
-    unless ($_procexe_linkname) {
-	for my $l ("exe", "file") {
-	    my $f = "/proc/$PID/$l"; # use pid of myself
-	    if (-e $f) {
-		readlink $f or die "/proc system is something bad: $!";
-		$_procexe_linkname = $l;
-		last;
-	    }
-	}
-        die "cannot read /proc to check sudo" unless $_procexe_linkname;
+package ProcRead {
+    use English;
+    use Errno;
+    use File::stat;
+
+    sub procexe_linkname ($) {
+        unless ($_procexe_linkname) {
+            for my $l ("exe", "file") {
+                my $f = "/proc/$PID/$l"; # use pid of myself
+                if (-e $f) {
+                    readlink $f or die "/proc system is something bad: $!";
+                    $_procexe_linkname = $l;
+                    last;
+                }
+            }
+            die "cannot read /proc to check sudo" unless $_procexe_linkname;
+        }
+
+        my $p = $_[0] + 0;
+        return ("/proc/$p/$_procexe_linkname");
     }
 
-    my $p = $_[0] + 0;
-    return ("/proc/$p/$_procexe_linkname");
+    sub split_stat {
+        local $_ = $_[0];
+        /(\d+) \((.*)\) ([A-Z]) ([0-9 ]+)/ or return undef;
+        my @a = ($1, $2, $3);
+        return (@a, split / /, $4);
+    }
+
+    sub readall {
+        open my $f, "<", $_[0] or return undef;
+        read $f, my $c, 4096 or return undef; # should fit in one page
+        close $f or return undef;
+        return $c;
+    }
+
+    sub split_status {
+        my %h;
+        for (split "\n", $_[0]) {
+            /^([^:]+):\s+(.*)$/ or next;
+            $h{uc $1} = $2;
+        }
+        return %h;
+    }
+
+    sub stat_to_str (@) {
+        if (ref $_[0]) {
+            join(",", ($_[0]->dev, $_[0]->ino));
+        } else {
+            join(",", ($_[0], $_[1]));
+        }
+    }
+
+    sub gather_proc_info ($) {
+        my $p = $_[0] + 0;
+        for my $xtimes (0 .. 9) {
+            -d "/proc/$p" or return undef;
+            my $proc_error = 0;
+            my $exename = readlink(procexe_linkname($p)) or goto error;
+            my $lstat = lstat $exename or goto error;
+            my $proccmdline = readall("/proc/$p/cmdline") or goto error;
+
+            my $stat_str = stat_to_str($lstat);
+            my $proc_stat = readall("/proc/$p/stat") or goto error;
+            my $proc_status = readall("/proc/$p/status") or goto error;
+
+            my $exename2 = readlink(procexe_linkname($p)) or goto error;
+            my $lstat2 = lstat $exename2 or goto error;
+            my $stat_str2 = stat_to_str($lstat2);
+
+            next if $exename ne $exename2;
+            next if $stat_str ne $stat_str2;
+
+            my @proc_stat = split_stat($proc_stat);
+            my %proc_status = split_status($proc_status);
+            return {
+                    "pid" => $p,
+                    "error" => undef,
+                    "path" => $exename,
+                    "stat" => $lstat,
+                    "stat_str" => $stat_str,
+                    "proc_stat" => \@proc_stat,
+                    "proc_status" => \%proc_status,
+                    "ppid" => $proc_status{PPID},
+                    "uids" => $proc_status{UID},
+                    "proc_id" => "$proc_stat[0]/$proc_stat[21]",
+                    "cmdline" => $proccmdline };
+
+          error: {
+                $proc_error = $!;
+                return
+                  { "pid" => $p,
+                    "error" => $proc_error,
+                    "path" => $exename, # may be undef
+                    "cmdline" => $proccmdline, # may be undef
+                    "stat" => $lstat };
+            }
+        }
+        die "unstable information for process #$p";
+    }
 }
 
 sub _create_surround_init () {
@@ -444,7 +529,7 @@ sub _create_surround_init () {
        $stat_proc->mode == 040555);
 
     # exe link must be available and is a readable link
-    readlink _procexe_linkname($pid) or
+    readlink ProcRead::procexe_linkname($pid) or
       die "/proc system is something bad: $!";
 
     # fragile information
@@ -461,77 +546,36 @@ sub _create_surround_init () {
 	    $s->{p_stat} = undef;
 	    return $s;
 	}
+        my $ppid_1_status = ProcRead::gather_proc_info($ppid_1);
 
-	my $ppid1_linkname = _procexe_linkname($ppid_1);
-	#&$b("path_1");
-	$path_1 = readlink($ppid1_linkname);
-	unless (defined $path_1) {
-	    if ($!{ENOENT}) {
-		# parent exited now
-		die unless getppid() == 1;
-		next;
-	    } elsif ($!{EPERM} || $!{EACCES}) {
-		# cannot read: different owner?
-		$ppid_2 = getppid();
+        if (! defined $ppid_1_status) {
+            # parent exited now
+            die unless getppid() == 1;
+            next;
+        }
+
+        if (my $err = $ppid_1_status->{proc_error}) {
+            $ppid_2 = getppid();
+            if ($err == Errno::EPERM or $err == Errno::EACCES) {
 		if ($ppid_2 == $ppid_1) {
 		    # cannot read: different owner, still alive
 		    die unless $ppid_0 == $ppid_1;
 		    $s->{status} = "EACCES";
 		    $s->{p_path} = undef;
 		    $s->{p_stat} = undef;
-		    $s->{error} = $!;
+		    $s->{error} = $err;
+                    $s->{procinfo} = $ppid_1_status;
 		    $_surrounds = $s;
 		    return $s;
 		} elsif ($ppid_2 == 1) {
 		    # cannot read: because parent exited (and I am non-root)
 		    next;
-		} else {
-		    die "can't happen (@ readlink_EPERM)"
-		}
-	    } else {
-		die "readlink: $!";
-	    }
-	}
-
-	#&$b("stat_1");
-	$stat_1 = stat($ppid1_linkname);
-	unless (defined $stat_1) {
-	    if ($!{ENOENT}) {
-		# parent exited now
-		die unless getppid() == 1;
-		next;
-	    } elsif ($!{EPERM} || $!{EACCES}) {
-		# cannot stat: different owner?
-		$ppid_2 = getppid();
-		if ($ppid_2 == $ppid_1) {
-		    # cannot stat: different owner, still alive
-		    die unless $ppid_0 == $ppid_1;
-		    $stat_1 = undef;
-		    $s->{status} = "EACCES";
-		    $s->{error} = $!;
-		    $_surrounds = $s;
-		    # go through to "path_2" below to check path consistency
-		} elsif ($ppid_2 == 1) {
-		    # cannot stat: because parent exited (and I am non-root)
-		    next;
-		} else {
-		    die "can't happen (@ stat_EPERM)"
-		}
-	    } else {
-		die "readlink: $!";
-	    }
-	}
-
-	#&$b("path_2");
-	$path_2 = readlink($ppid1_linkname);
-	unless (defined $path_2) {
-	    if ($!{ENOENT} || $!{EPERM} || $!{EACCES}) {
-		next;
-	    } else {
-		"readlink (2): $!";
-	    }
+                }
+            } elsif ($err == Errno::ENOENT and $ppid_2 == 1) {
+              # cannot read: because parent exited (and I am non-root)
+                next;
+            }
         }
-	next if $path_1 ne $path_2;
 
         #&$b("ppid_2");
         $ppid_2 = getppid();
@@ -539,8 +583,10 @@ sub _create_surround_init () {
 	die unless $ppid_0 == $ppid_1;
 
         $s->{status} ||= "success";
-        $s->{p_path} = $path_1;
-        $s->{p_stat} = $stat_1;
+        $s->{p_path} = $ppid_1_status->{path};
+        $s->{p_stat} = $ppid_1_status->{stat};
+        $s->{p_status} = $ppid_1_status;
+
         return $s;
     }
     die "cannot get stable surrounding status"
@@ -569,9 +615,46 @@ sub _encode_wrapper_info($) {
 sub _decode_wrapped_info($$$$) {
     my ($v, $uid, $gid, $pass_env) = @_;
     my @v = @$v;
-    if (scalar @v != 4 or sprintf("%d", getppid()) ne $v[0] or "$uid" ne $v[1] or "$gid" ne $v[2]) {
+    if (scalar @v != 4 or "$uid" ne $v[1] or "$gid" ne $v[2]) {
 	die SUIDSetupError("wrapped invocation key mismatch")
     }
+    die SUIDSetupError("bad wrapped invocation key")
+      if sprintf("%d", $v[0]) ne $v[0];
+
+    my $invoked_sudo = undef;
+    my $ppid = getppid();
+    if ($ppid == $v[0]) {
+        $invoked_sudo = $v[0];
+    } else {
+        # OOPS, the parent is not the calling PID.
+        # check if the grandparent is.
+        die unless $_surrounds;
+        my $pstatus = $_surrounds->{p_status};
+        my $pppid = $pstatus->{ppid};
+        die SUIDSetupError("bad wrapped invocation key (grand parent not found)")
+          if ! defined $pppid or $pppid == 1;
+        my $ppstatus = ProcRead::gather_proc_info($pppid);
+        die SUIDSetupError("bad wrapped invocation key (grand parent not examinable)")
+          if ! defined $ppstatus or $ppstatus->{error};
+        $_surrounds->{pp_status} = $ppstatus; # for debugging
+        if ($pstatus->{path}     eq $ppstatus->{path} and
+            $pstatus->{stat_str} eq $ppstatus->{stat_str} and
+            $pstatus->{uids}     eq $ppstatus->{uids} and
+            $pstatus->{cmdline}  eq $ppstatus->{cmdline} and
+            $ALLOWED_SUDO_{$pstatus->{path}}) {
+            # Both grandparent and parent is the same SUDO.
+            #   - under use_pty option, they are forked clones.
+            #   - if invoked as "sudo sudo", sudo will certainly modify cmdline.
+            #   - non-sudo is rejected by ALLOWED_SUDO_ and later on further sudo check.
+            #   - ROOT can cheat everything, but they do not need to attack this module.
+            # say "Grand parent $pppid is invoking sudo, not $ppid";
+            if ($pppid == $v[0]) {
+                $invoked_sudo = $v[0];
+            }
+        }
+    }
+    die SUIDSetupError("wrapped invocation key mismatch (invoking sudo not found)")
+      unless $invoked_sudo;
     return {passed_env => _decode_passenv($v[3], $pass_env)};
 }
 
