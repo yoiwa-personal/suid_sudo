@@ -237,22 +237,7 @@ module SUID_SUDO
     attr_reader :groups, :user_pwent, :root_pwent, :root_envs, :user_envs
   end
 
-  # Class representing the process's surrounding environment,
-  # especially its parent.
-  #
-  # The class method "surrounds" returns a singleton instance
-  # representing the current process's status.
-  class SURROUND_INFO_
-    @@surrounds = nil
-    def self.check_surround()
-      return @@surrounds if @@surrounds
-      return @@surrounds = SURROUND_INFO_.new()
-    end
-
-    def self.surrounds()
-      return @@surrounds
-    end
-
+  class Proc_Info_
     @@procexe_linkname = nil
     def self.procexe_linkname(pid)
       unless (@@procexe_linkname)
@@ -274,6 +259,96 @@ module SUID_SUDO
       end
 
       return "/proc/#{pid}/#{@@procexe_linkname}"
+    end
+
+    def self._split_stat(s)
+      l12, sep, r2 = s.rpartition(') ')
+      raise "something is bad on proc_pid_stat (1)" if sep != ') '
+      f1, sep, f2 = l12.partition(' (')
+      raise "something is bad on proc_pid_stat (2)" if sep != ' ('
+      f33 = r2.split(' ')
+      return [f1, f2] + f33
+    end
+
+    def self._split_status(s)
+      ret = {}
+      lines = s.split("\n")
+      lines.each { |l|
+        f, sep, v = l.partition(":\t")
+        if (sep != ":\t" and l != "")
+          warn(f"unparseable line {l!r} in proc_pid_status")
+          next
+        end
+        ret[f.upcase] = v
+      }
+      return ret
+    end
+
+    def self._read_all(f)
+      open(f, "r") {
+        |ff| ff.read(4096) # a safety valve: should fit in a single page
+      }
+    end
+
+    # examine detailed status of running process with given pid.
+    private
+    def initialize(pid)
+      @pid = pid
+      store = {}
+      done = false
+      10.times {
+        begin
+          _ = File::stat("/proc/%d" % pid)
+          path = store["path"] = File::readlink(self.class.procexe_linkname(pid))
+          lstat = store["stat"] = File::lstat(path)
+          store["cmdline"] = self.class._read_all("/proc/%d/cmdline" % pid)
+          store["proc_stat"] = self.class._split_stat(self.class._read_all("/proc/%d/stat" % pid))
+          store["proc_status"] = self.class._split_status(self.class._read_all("/proc/%d/status" % pid))
+
+          path2 = File::readlink(self.class.procexe_linkname(pid))
+          lstat2 = File::lstat(path2)
+
+          next if path != path2 or lstat != lstat2
+
+          ["path", "stat", "cmdline", "proc_stat", "proc_status"].each {
+            |key| self.instance_variable_set("@" + key, store[key])
+          }
+
+          @error = false
+          @ppid = @proc_status["PPID"].to_i
+          @uids = @proc_status["UID"]
+          @proc_id = "%s/%s" % [@proc_stat[0], @proc_stat[21]]
+          done = true
+          break
+        rescue SystemCallError => e
+          @error = e
+          done = true
+          break
+        end
+      }
+      unless done
+        raise Errno::EAGAIN, "reading /proc not stable"
+      end
+    end
+    public
+    attr_reader :error, :ppid, :uids, :proc_id, \
+                :path, :stat, :cmdline, :proc_stat, :proc_status
+  end
+  
+  # Class representing the process's surrounding environment,
+  # especially its parent.
+  #
+  # The class method "surrounds" returns a singleton instance
+  # representing the current process's status.
+  class SURROUND_INFO_
+    @@surrounds = nil
+    def self.check_surround()
+      return @@surrounds if @@surrounds
+      return @@surrounds = SURROUND_INFO_.new()
+    end
+
+    def self.surrounds()
+      return @@surrounds
     end
 
     # Acquire a "consistent" information on the parent process.
@@ -339,7 +414,7 @@ module SUID_SUDO
 
       # all the following status values might change during execution.
       # ppid may change only once to 1 when the parent exits.
-      @@ppid = ppid_0 = Process::ppid
+      @ppid = ppid_0 = Process::ppid
 
       # is_root = Process::euid == 0
       # is_suid = Process::euid != Process::uid
@@ -354,7 +429,7 @@ module SUID_SUDO
       )
 
       # sanity check: check for exe link
-      self.class.procexe_linkname(pid)
+      Proc_Info_::procexe_linkname(pid)
 
       # fragile information
       10.times { |xtimes|
@@ -366,66 +441,43 @@ module SUID_SUDO
         if (ppid_1 == 1)
           # parent exited
           @status = :ENOENT
+          @os_error = nil
           @p_path = nil
           @p_stat = nil
+          @procinfo = nil
           return
         end
 
-        ppid1_linkname = self.class.procexe_linkname(ppid_1)
+        ppid_1_status = Proc_Info_.new(ppid_1)
 
-        begin
-          b.("path_1")
-          path_1 = File::readlink(ppid1_linkname)
-        rescue Errno::ENOENT
-          # parent exited now
-          raise unless Process::ppid == 1
-          next
-        rescue Errno::EPERM, Errno::EACCES => e
-          # cannot read: different owner?
-          case Process::ppid
-          when ppid_1
-            # cannot read: different owner, still alive
-            raise unless ppid_0 == ppid_1
-            @status = :EACCES
-            @p_path = e
-            @p_stat = e
-            return
-          when 1
-            # cannot read: because parent exited (and I am non-root)
+        if ppid_1_status.error
+          e = ppid_1_status.error
+          case e.errno
+          when Errno::ENOENT::Errno
+            # parent exited now
+            raise unless Process::ppid == 1
             next
+          when Errno::EPERM::Errno, Errno::EACCES::Errno
+            # cannot read: different owner?
+            case Process::ppid
+            when ppid_1
+              # cannot read: different owner, still alive
+              raise unless ppid_0 == ppid_1
+              @status = :EACCES
+              @p_path = nil
+              @p_stat = nil
+              @os_error = e
+              @procinfo = ppid_1_status
+              return
+            when 1
+              # cannot read: because parent exited (and I am non-root)
+              next
+            else
+              raise
+            end
           else
-            raise
+            raise ppid_1_status.error
           end
-        end
-
-        begin
-          b.("stat_1")
-          stat_1 = File::stat(ppid1_linkname)
-        rescue Errno::ENOENT
-          # parent exited now
-          raise unless Process::ppid == 1
-          next
-        rescue Errno::EPERM, Errno::EACCES => e
-          # cannot read: different owner?
-          case Process::ppid
-          when ppid_1
-            @status = :EACCES
-            stat_1 = e
-            # go through to "path_2" below to check path consistency
-          when 1
-            # cannot read: because parent exited
-            next
-          else
-            raise
-          end
-        end
-
-        begin
-          b.("path_2")
-          path_2 = File::readlink(ppid1_linkname)
-          next if path_1 != path_2
-        rescue Errno::ENOENT, Errno::EPERM, Errno::EACCES
-          next
         end
 
         b.("ppid_2")
@@ -434,35 +486,16 @@ module SUID_SUDO
 
         raise unless ppid_0 == ppid_1
         @status ||= :success
-        @p_path = path_1
-        @p_stat = stat_1
+        @os_error = nil
+        @p_path = ppid_1_status.path
+        @p_stat = ppid_1_status.stat
+        @procinfo = ppid_1_status
         return
       }
       raise Errno::EAGAIN
     end
     public
-    attr_reader :status, :p_path, :p_stat
-
-    def self.test_main()
-      wait = (ARGV[0] || 20).to_i
-      pid_1 = fork {
-        fork {
-          p check_surround()
-        }
-        sleep(wait)
-        if ARGV[2]
-          p "parent swap"
-          exec("sudo", "sleep", ARGV[2])
-        elsif ARGV[1]
-          p "parent swap"
-          exec("sleep", ARGV[1])
-        else
-          p "parent exit"
-          exit(0)
-        end
-      }
-      Process::waitpid(pid_1)
-    end
+    attr_reader :status, :p_path, :p_stat, :procinfo, :os_error, :pprocinfo
   end
 
   private
@@ -495,8 +528,35 @@ module SUID_SUDO
   end
 
   def self._decode_wrapped_info(v, uid, gid, pass_env)
-    if v.length != 4 or Process::ppid.to_s != v[0] or uid.to_s != v[1] or gid.to_s != v[2]
+    invoked_sudo = false
+    if v.length != 4 or uid.to_s != v[1] or gid.to_s != v[2]
       raise SUIDSetupError::new("wrapped invocation key mismatch")
+    end
+    pp = v[0]
+    if pp == Process::ppid.to_s
+      invoked_sudo = pp.to_i
+    else
+      # OOPS, the parent is not the calling PID.
+      # check if the grandparent is.
+      sinfo = SURROUND_INFO_::check_surround()
+      if (sinfo.status == :success and
+          sinfo.procinfo.ppid.to_s == pp)
+        p_status = sinfo.procinfo
+        pppid = sinfo.procinfo.ppid
+        pp_status = Proc_Info_.new(pppid)
+        if ((not pp_status.error) and
+            p_status.path == pp_status.path and
+            p_status.stat == pp_status.stat and
+            p_status.uids == pp_status.uids and
+            p_status.cmdline == pp_status.cmdline and
+            p_status.path in allowed_sudo)
+          invoked_sudo = pppid
+          sinfo.instance_variable_set(:@pprocinfo, pp_status) # for debugging
+        end
+      end
+    end
+    if not invoked_sudo
+      raise SUIDSetupError::new("error: wrapped invocation key mismatch (pid)")
     end
     return {passed_env: _decode_passenv(v[3], pass_env)}
   end
@@ -619,7 +679,7 @@ module SUID_SUDO
 
   def self._get_ruby_interpreter()
     pid = Process::pid
-    exe = File.readlink(SURROUND_INFO_::procexe_linkname(pid))
+    exe = File.readlink(Proc_Info_::procexe_linkname(pid))
     # sanity check
     if ! (%r(\A/..*/ruby(\d[^/]*)*\z) =~ exe)
       raise SUIDSetupError::new("unknown ruby interpreter #{exe}")
