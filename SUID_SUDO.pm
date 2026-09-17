@@ -348,7 +348,7 @@ sub _check_surround () {
     return $_surrounds = _create_surround_init();
 }
 
-package ProcRead {
+package SUID_SUDO::_Proc_Info {
     use English;
     use Errno;
     use File::stat;
@@ -529,7 +529,7 @@ sub _create_surround_init () {
        $stat_proc->mode == 040555);
 
     # exe link must be available and is a readable link
-    readlink ProcRead::procexe_linkname($pid) or
+    readlink SUID_SUDO::_Proc_Info::procexe_linkname($pid) or
       die "/proc system is something bad: $!";
 
     # fragile information
@@ -546,7 +546,7 @@ sub _create_surround_init () {
 	    $s->{p_stat} = undef;
 	    return $s;
 	}
-        my $ppid_1_status = ProcRead::gather_proc_info($ppid_1);
+        my $ppid_1_status = SUID_SUDO::_Proc_Info::gather_proc_info($ppid_1);
 
         if (! defined $ppid_1_status) {
             # parent exited now
@@ -585,7 +585,7 @@ sub _create_surround_init () {
         $s->{status} ||= "success";
         $s->{p_path} = $ppid_1_status->{path};
         $s->{p_stat} = $ppid_1_status->{stat};
-        $s->{p_status} = $ppid_1_status;
+        $s->{procinfo} = $ppid_1_status;
 
         return $s;
     }
@@ -629,14 +629,14 @@ sub _decode_wrapped_info($$$$) {
         # OOPS, the parent is not the calling PID.
         # check if the grandparent is.
         die unless $_surrounds;
-        my $pstatus = $_surrounds->{p_status};
+        my $pstatus = $_surrounds->{procinfo};
         my $pppid = $pstatus->{ppid};
         die SUIDSetupError("bad wrapped invocation key (grand parent not found)")
           if ! defined $pppid or $pppid == 1;
-        my $ppstatus = ProcRead::gather_proc_info($pppid);
+        my $ppstatus = SUID_SUDO::_Proc_Info::gather_proc_info($pppid);
         die SUIDSetupError("bad wrapped invocation key (grand parent not examinable)")
           if ! defined $ppstatus or $ppstatus->{error};
-        $_surrounds->{pp_status} = $ppstatus; # for debugging
+        $_surrounds->{pprocinfo} = $ppstatus; # for debugging
         if ($pstatus->{path}     eq $ppstatus->{path} and
             $pstatus->{stat_str} eq $ppstatus->{stat_str} and
             $pstatus->{uids}     eq $ppstatus->{uids} and

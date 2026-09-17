@@ -263,7 +263,7 @@ class _Proc_Info:
     @classmethod
     def _read_all(self, f):
         with open(f, "r") as ff:
-            return ff.read()
+            return ff.read(4096) # a safety valve: should fit in a single page
 
     def __init__(self, pid):
         self.pid = pid
@@ -397,7 +397,7 @@ class _Surround_Info:
                 self.os_error = None
                 self.p_path = None
                 self.p_stat = None
-                self.proc_stat = None
+                self.procinfo = None
                 return
 
             ppid_1_status = _Proc_Info(ppid_1)
@@ -421,7 +421,7 @@ class _Surround_Info:
                         self.p_path = None
                         self.p_stat = None
                         self.os_error = e
-                        self.proc_stat = ppid_1_status
+                        self.procinfo = ppid_1_status
                         return
                     elif ppid_2 == 1:
                         # cannot read: because parent exited (and I am non-root)
@@ -439,7 +439,7 @@ class _Surround_Info:
             self.os_error = None
             self.p_path = ppid_1_status.path
             self.p_stat = ppid_1_status.stat
-            self.proc_stat = ppid_1_status
+            self.procinfo = ppid_1_status
             return
 
         raise OSError(errno.EAGAIN, "reading /proc not stable")
@@ -482,9 +482,9 @@ def _decode_wrapped_info(v, uid, gid, pass_env):
         # check if the grandparent is.
         sinfo = _Surround_Info.check_surround()
         if (sinfo.status == _Surround_Info.SUCCESS and
-            sinfo.proc_stat.ppid == pp):
-            p_status = sinfo.proc_stat
-            pppid = sinfo.proc_stat.ppid
+            sinfo.procinfo.ppid == pp):
+            p_status = sinfo.procinfo
+            pppid = sinfo.procinfo.ppid
             pp_status = _Proc_Info(pppid)
             if ((not pp_status.error) and
                 p_status.path == pp_status.path and
@@ -493,9 +493,9 @@ def _decode_wrapped_info(v, uid, gid, pass_env):
                 p_status.cmdline == pp_status.cmdline and
                 p_status.path in allowed_sudo):
                 invoked_sudo = pppid
-                setattr(sinfo, "gp_proc_stat", pp_status) # for debugging
+                setattr(sinfo, "pprocinfo", pp_status) # for debugging
     if not invoked_sudo:
-        raise SUIDSetupError("error: wrapped invocation key mismatch (pid)o")
+        raise SUIDSetupError("error: wrapped invocation key mismatch (pid)")
     return {"passed_env": _decode_passenv(v[3], pass_env)}
 
 def _setup_passenv(pass_env):
