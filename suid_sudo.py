@@ -3,7 +3,7 @@
 #
 # https://github.com/yoiwa-personal/suid_sudo/
 #
-# Copyright 2019 Yutaka OIWA <yutaka@oiwa.jp>.
+# Copyright 2019-2026 Yutaka OIWA <yutaka@oiwa.jp>.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -78,18 +78,13 @@ import errno
 
 # Python 2/3 bi-compatibility
 
-_ispython2 = False
 if sys.version_info[0] == 2:
-    _ispython2 = True
     raise RuntimeError("python2 not supported anymore")
 else:
     if sys.version_info < (3, 5, 3):
         raise RuntimeError("too old python3 version")
     else:
         pass
-
-if _ispython2:
-    import fcntl
 
 # Exceptions
 
@@ -448,18 +443,15 @@ class _Surround_Info:
 
 def _keystr_encode(*a):
     l = [str(x) for x in a]
-    if not _ispython2:
-        l = [bytes(x, 'utf-8', 'surrogateescape') for x in l]
+    l = [bytes(x, 'utf-8', 'surrogateescape') for x in l]
     b = base64.urlsafe_b64encode(b'\0'.join(l)).decode('ascii')
     return b
 
 def _keystr_decode(s):
     try:
-        if not _ispython2:
-            s = bytes(s, 'ascii', 'error')
+        s = bytes(s, 'ascii', 'error')
         v = base64.urlsafe_b64decode(s).split(b'\0')
-        if not _ispython2:
-            v = [str(x, 'utf-8', 'surrogateescape') for x in v]
+        v = [str(x, 'utf-8', 'surrogateescape') for x in v]
         return v
     except (UnicodeError, ValueError, binascii.Error):
         raise SUIDSetupError("error: bad format wrapped invocation key")
@@ -641,10 +633,6 @@ def _process_python_flags(python_flags, inherit_flags):
             pass
         elif f in added:
             pass
-        elif _ispython2 and f == 'I':
-            added[f] = True
-            _add('s')
-            _add('E')
         else:
             added[f] = True
             flags.append("-" + f)
@@ -1342,10 +1330,6 @@ def call_in_subprocess(func, *args, **kwargs):
     """
 
     (rp, wp) = _safe_pipe()
-    if _ispython2:
-        # O_CLOEXEC flag is set in Python 3 only.
-        for p in (rp, wp):
-            fcntl.fcntl(p, fcntl.F_SETFD, fcntl.FD_CLOEXEC)
     pid = os.fork()
     val, error = None, None
     if pid != 0:
