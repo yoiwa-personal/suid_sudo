@@ -3,7 +3,7 @@
 #
 # https://github.com/yoiwa-personal/suid_sudo/
 #
-# Copyright 2019 Yutaka OIWA <yutaka@oiwa.jp>.
+# Copyright 2019-2016 Yutaka OIWA <yutaka@oiwa.jp>.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
